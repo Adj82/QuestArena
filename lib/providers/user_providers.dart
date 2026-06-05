@@ -20,5 +20,7 @@ final currentUserProvider = StreamProvider<UserModel?>((ref) {
   if (authState == null) return Stream.value(null);
 
   final repo = ref.watch(userRepositoryProvider);
-  return repo.watchUserProfile(authState.uid);
+  return repo.watchUserProfile(authState.uid).handleError((error) {
+    print('User Stream Error: $error');
+  });
 });

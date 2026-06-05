@@ -7,6 +7,7 @@ import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/auth_providers.dart';
+import '../../../core/errors/result.dart';
 
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
@@ -109,11 +110,66 @@ class ProfileTab extends ConsumerWidget {
                     );
                   },
                 ),
+
+                const SizedBox(height: 48),
+
+                // Delete Account Button
+                TextButton.icon(
+                  onPressed: () => _showDeleteConfirmation(context, ref, user.uid),
+                  icon: const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
+                  label: Text(
+                    'DELETE ACCOUNT', 
+                    style: AppTextStyles.label.copyWith(color: AppColors.red, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
         );
       },
+    );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String uid) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        title: Text('DELETE ACCOUNT?', style: AppTextStyles.headline.copyWith(color: AppColors.red)),
+        content: Text(
+          'This action is permanent. All your XP, coins, and achievements will be lost forever.',
+          style: AppTextStyles.bodyMd,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('CANCEL', style: AppTextStyles.label),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+              
+              // 1. Delete Firestore data first
+              await ref.read(userRepositoryProvider).deleteUserProfile(uid);
+              
+              // 2. Delete Auth account
+              final result = await ref.read(authRepositoryProvider).deleteAccount();
+              
+              if (context.mounted && result is Failure) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text((result as Failure).error.message),
+                    backgroundColor: AppColors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            child: const Text('DELETE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
     );
   }
 }

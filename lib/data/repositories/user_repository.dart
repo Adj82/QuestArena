@@ -27,8 +27,6 @@ class UserRepository {
       );
       return const Success(null);
     } catch (e) {
-      // LOG THE ACTUAL ERROR TO TERMINAL
-      print('Firestore Error: $e');
       return Failure(DatabaseError(e.toString()));
     }
   }
@@ -41,7 +39,6 @@ class UserRepository {
       }
       return const Failure(DatabaseError("User profile not found."));
     } catch (e) {
-      print('Firestore Error: $e');
       return Failure(DatabaseError(e.toString()));
     }
   }
@@ -55,6 +52,10 @@ class UserRepository {
       if (!doc.exists || doc.data() == null) return null;
       return UserModel.fromJson(doc.data()!);
     });
+  }
+
+  Future<void> deleteUserProfile(String uid) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).delete();
   }
 
   Future<void> updateUserStats({
@@ -95,10 +96,15 @@ class UserRepository {
 
       // Calculate Rank
       String rank = 'Bronze';
-      if (currentXp + (currentLevel * 1000) >= 10000) rank = 'Diamond';
-      else if (currentXp + (currentLevel * 1000) >= 4000) rank = 'Platinum';
-      else if (currentXp + (currentLevel * 1000) >= 1500) rank = 'Gold';
-      else if (currentXp + (currentLevel * 1000) >= 500) rank = 'Silver';
+      if (currentXp + (currentLevel * 1000) >= 10000) {
+        rank = 'Diamond';
+      } else if (currentXp + (currentLevel * 1000) >= 4000) {
+        rank = 'Platinum';
+      } else if (currentXp + (currentLevel * 1000) >= 1500) {
+        rank = 'Gold';
+      } else if (currentXp + (currentLevel * 1000) >= 500) {
+        rank = 'Silver';
+      }
 
       // Achievements Logic
       final achievements = List<String>.from(data['achievements'] ?? []);
