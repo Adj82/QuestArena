@@ -143,13 +143,16 @@ class UserRepository {
         .collection('users')
         .doc(uid)
         .collection('matchHistory')
-        .orderBy('playedAt', descending: true)
+        // Temporarily removed orderBy to check if it's an index issue
         .limit(10)
         .snapshots()
         .map((snapshot) {
-      return snapshot.docs
+      final history = snapshot.docs
           .map((doc) => MatchHistoryModel.fromJson(doc.data()))
           .toList();
+      // Sort manually in Dart to avoid index requirements during debug
+      history.sort((a, b) => b.playedAt.compareTo(a.playedAt));
+      return history;
     });
   }
 }

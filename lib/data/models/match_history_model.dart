@@ -21,6 +21,22 @@ class MatchHistoryModel {
   });
 
   factory MatchHistoryModel.fromJson(Map<String, dynamic> json) {
+    DateTime parsedDate = DateTime.now();
+    try {
+      if (json['playedAt'] != null) {
+        final val = json['playedAt'];
+        if (val is DateTime) {
+          parsedDate = val;
+        } else if (val is String) {
+          parsedDate = DateTime.parse(val);
+        } else {
+          parsedDate = (val as dynamic).toDate();
+        }
+      }
+    } catch (e) {
+      print('Error parsing date: $e');
+    }
+
     return MatchHistoryModel(
       matchId: json['matchId'] ?? '',
       opponentName: json['opponentName'] ?? 'Unknown',
@@ -28,9 +44,7 @@ class MatchHistoryModel {
       myScore: json['myScore'] ?? 0,
       opponentScore: json['opponentScore'] ?? 0,
       xpGained: json['xpGained'] ?? 0,
-      playedAt: json['playedAt'] != null 
-          ? (json['playedAt'] as dynamic).toDate() 
-          : DateTime.now(),
+      playedAt: parsedDate,
     );
   }
 
