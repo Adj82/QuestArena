@@ -14,6 +14,7 @@ import '../../core/constants/text_styles.dart';
 import '../../providers/game_providers.dart';
 import '../../providers/user_providers.dart';
 import '../../data/models/game_room_model.dart';
+import '../../core/utils/game_utils.dart';
 import 'result_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
