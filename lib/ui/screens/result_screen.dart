@@ -41,36 +41,14 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     try {
       final currentUser = ref.read(currentUserProvider).value;
       if (currentUser == null) {
-        // If user is null, wait a bit and try again (stream might be initializing)
         await Future.delayed(const Duration(seconds: 1));
         _handleRewards();
         return;
       }
 
-      // Check if Firestore already says we claimed it
-      if (widget.room.claimedRewards.contains(currentUser.uid)) {
-        if (mounted) setState(() => _rewardsClaimed = true);
-        return;
-      }
-
       final isWinner = widget.room.winnerId == currentUser.uid;
-      
-      // 1. Update User Stats in Firestore
-      await ref.read(userRepositoryProvider).updateUserStats(
-        uid: currentUser.uid,
-        xpGained: isWinner ? 50 : 15,
-        coinsGained: isWinner ? 20 : 5,
-        isWin: isWinner,
-      );
 
-      // 2. Mark as claimed in the Game Room doc
-      await ref.read(gameRepositoryProvider).claimRewards(
-        widget.room.roomId,
-        currentUser.uid,
-        isWinner,
-      );
-
-      // 3. Save to Match History
+      // 1. Calculate History first so it's ready
       final myScore = currentUser.uid == widget.room.player1['uid'] 
           ? widget.room.player1['score'] 
           : (widget.room.player2?['score'] ?? 0);
@@ -93,10 +71,25 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         playedAt: DateTime.now(),
       );
 
-      await ref.read(userRepositoryProvider).saveMatchHistory(currentUser.uid, history);
+      // 2. Perform all updates in parallel for speed
+      await Future.wait([
+        ref.read(userRepositoryProvider).updateUserStats(
+          uid: currentUser.uid,
+          xpGained: isWinner ? 50 : 15,
+          coinsGained: isWinner ? 20 : 5,
+          isWin: isWinner,
+        ),
+        ref.read(gameRepositoryProvider).claimRewards(
+          widget.room.roomId,
+          currentUser.uid,
+          isWinner,
+        ),
+        ref.read(userRepositoryProvider).saveMatchHistory(currentUser.uid, history),
+      ]);
+      
+      print('All rewards and history saved successfully!');
     } catch (e) {
       print('Error claiming rewards: $e');
-      // We still set to true so the user can go home even if update fails
     } finally {
       if (mounted) {
         setState(() => _rewardsClaimed = true);
