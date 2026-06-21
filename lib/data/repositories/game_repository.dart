@@ -140,16 +140,142 @@ class GameRepository {
           final p1Score = playerNumber == 1 ? newScore : (player1['score'] ?? 0);
           final p2Score = playerNumber == 2 ? newScore : (player2['score'] ?? 0);
           
-          String winnerId = 'draw';
-          if (p1Score > p2Score) winnerId = player1['uid'];
-          if (p2Score > p1Score) winnerId = player2['uid'];
+          if (p1Score == p2Score) {
+            // TIE DETECTED -> Trigger Arena Breaker
+            transaction.update(roomRef, {
+              'status': 'arena_breaker',
+              'isArenaBreaker': true,
+            });
+            // Fetch the first tie-breaker question
+            _fetchArenaBreakerQuestion(roomId);
+          } else {
+            String winnerId = 'draw';
+            if (p1Score > p2Score) winnerId = player1['uid'];
+            if (p2Score > p1Score) winnerId = player2['uid'];
 
+            transaction.update(roomRef, {
+              'status': 'finished',
+              'winnerId': winnerId,
+            });
+          }
+        }
+      }
+    });
+  }
+
+  // --- ARENA BREAKER LOGIC ---
+
+  /// Internal helper to fetch a single fresh question for the Arena Breaker round.
+  Future<void> _fetchArenaBreakerQuestion(String roomId) async {
+    try {
+      final response = await _dio.get(ApiConstants.triviaUrl, queryParameters: {'amount': 1});
+      final q = (response.data['results'] as List).first;
+      final questionMap = {
+        'question': GameUtils.decodeHtmlEntities(q['question']),
+        'correct_answer': GameUtils.decodeHtmlEntities(q['correct_answer']),
+        'incorrect_answers': (q['incorrect_answers'] as List)
+            .map((a) => GameUtils.decodeHtmlEntities(a))
+            .toList(),
+      };
+
+      await _db.collection('gameRooms').doc(roomId).update({
+        'arenaBreakerQuestion': questionMap,
+        'arenaBreakerSubmissions': {}, // Reset submissions for the new round
+        'arenaBreakerStartTime': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      print("Arena Breaker API Error: $e");
+      // Fallback
+      await _db.collection('gameRooms').doc(roomId).update({
+        'arenaBreakerQuestion': GameUtils.getFallbackQuestions().first,
+        'arenaBreakerSubmissions': {},
+        'arenaBreakerStartTime': FieldValue.serverTimestamp(),
+      });
+    }
+  }
+
+  /// Submits an answer during the Arena Breaker phase.
+  Future<void> submitArenaBreakerAnswer({
+    required String roomId,
+    required String userId,
+    required String answer,
+  }) async {
+    final roomRef = _db.collection('gameRooms').doc(roomId);
+
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(roomRef);
+      if (!snapshot.exists) return;
+
+      final data = snapshot.data() as Map<String, dynamic>;
+      final question = data['arenaBreakerQuestion'];
+      if (question == null) return;
+
+      final isCorrect = answer == question['correct_answer'];
+      final submissions = Map<String, dynamic>.from(data['arenaBreakerSubmissions'] ?? {});
+
+      if (submissions.containsKey(userId)) return; // Already answered this round
+
+      submissions[userId] = {
+        'answer': answer,
+        'isCorrect': isCorrect,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      };
+
+      transaction.update(roomRef, {'arenaBreakerSubmissions': submissions});
+
+      final player1 = data['player1'];
+      final player2 = data['player2'];
+
+      // Check if both have submitted or if one answered correctly (instant win)
+      if (submissions.length == 2) {
+        final s1 = submissions[player1['uid']];
+        final s2 = submissions[player2['uid']];
+
+        String? winnerId;
+
+        if (s1['isCorrect'] && !s2['isCorrect']) {
+          winnerId = player1['uid'];
+        } else if (!s1['isCorrect'] && s2['isCorrect']) {
+          winnerId = player2['uid'];
+        } else if (s1['isCorrect'] && s2['isCorrect']) {
+          // Both correct -> Compare response times
+          if (s1['timestamp'] < s2['timestamp']) {
+            winnerId = player1['uid'];
+          } else if (s2['timestamp'] < s1['timestamp']) {
+            winnerId = player2['uid'];
+          } else {
+            // CASE 4: PERFECT TIE (Identical times)
+            transaction.update(roomRef, {
+              'arenaBreakerStatusMessage': 'Perfect Tie! Launching another Arena Breaker round...',
+            });
+            _scheduleNextABRound(roomId);
+            return;
+          }
+        } else {
+          // CASE 2: BOTH INCORRECT
+          transaction.update(roomRef, {
+            'arenaBreakerStatusMessage': 'Both players answered incorrectly. Next question loading...',
+          });
+          _scheduleNextABRound(roomId);
+          return;
+        }
+
+        if (winnerId != null) {
           transaction.update(roomRef, {
             'status': 'finished',
             'winnerId': winnerId,
+            'isArenaBreakerWin': true,
+            'arenaBreakerStatusMessage': null,
           });
         }
       }
+    });
+  }
+
+  /// Helper to delay the transition between Arena Breaker rounds
+  void _scheduleNextABRound(String roomId) {
+    Future.delayed(const Duration(seconds: 3), () {
+      _fetchArenaBreakerQuestion(roomId);
     });
   }
 
@@ -175,5 +301,68 @@ class GameRepository {
       claimed.add(userId);
       transaction.update(roomRef, {'claimedRewards': claimed});
     });
+  }
+
+  // --- REMATCH LOGIC ---
+
+  /// Adds the user's ID to the rematchRequests list in Firestore.
+  Future<void> requestRematch(String roomId, String userId) async {
+    await _db.collection('gameRooms').doc(roomId).update({
+      'rematchRequests': FieldValue.arrayUnion([userId]),
+    });
+  }
+
+  /// Creates a completely fresh match using the same players from the old room.
+  Future<void> createRematchGame({
+    required String oldRoomId,
+    required Map<String, dynamic> player1,
+    required Map<String, dynamic> player2,
+  }) async {
+    final newRoomId = _db.collection('gameRooms').doc().id;
+
+    // Fetch fresh questions
+    List<Map<String, dynamic>> questions = [];
+    try {
+      final response = await _dio.get(ApiConstants.triviaUrl);
+      questions = (response.data['results'] as List).map((q) => {
+        'question': GameUtils.decodeHtmlEntities(q['question']),
+        'correct_answer': GameUtils.decodeHtmlEntities(q['correct_answer']),
+        'incorrect_answers': (q['incorrect_answers'] as List)
+            .map((a) => GameUtils.decodeHtmlEntities(a))
+            .toList(),
+      }).toList();
+    } catch (e) {
+      print("Trivia API Error: $e");
+      questions = GameUtils.getFallbackQuestions();
+    }
+
+    // Reset dynamic fields for both players
+    Map<String, dynamic> resetPlayer(Map<String, dynamic> p) {
+      final newP = Map<String, dynamic>.from(p);
+      newP['score'] = 0;
+      newP['answers'] = [];
+      newP['isReady'] = false;
+      return newP;
+    }
+
+    final batch = _db.batch();
+
+    // 1. Set up the new room
+    batch.set(_db.collection('gameRooms').doc(newRoomId), {
+      'roomId': newRoomId,
+      'roomCode': '',
+      'status': 'waiting',
+      'player1': resetPlayer(player1),
+      'player2': resetPlayer(player2),
+      'createdAt': FieldValue.serverTimestamp(),
+      'questions': questions,
+    });
+
+    // 2. Link the old room to the new one
+    batch.update(_db.collection('gameRooms').doc(oldRoomId), {
+      'nextMatchId': newRoomId,
+    });
+
+    await batch.commit();
   }
 }

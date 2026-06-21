@@ -18,6 +18,8 @@ class UserModel {
   final int totalLosses;
   final String rank;
   final List<String> achievements;
+  final int arenaBreakerWins;
+  final int arenaBreakerLosses;
 
   UserModel({
     required this.uid,
@@ -32,6 +34,8 @@ class UserModel {
     this.totalLosses = 0,
     this.rank = 'Bronze',
     this.achievements = const [],
+    this.arenaBreakerWins = 0,
+    this.arenaBreakerLosses = 0,
   });
 
   // Manual JSON conversion for Day 1 (to avoid code-gen errors)
@@ -49,6 +53,8 @@ class UserModel {
       totalLosses: json['totalLosses'] ?? 0,
       rank: json['rank'] ?? 'Bronze',
       achievements: List<String>.from(json['achievements'] ?? []),
+      arenaBreakerWins: json['arenaBreakerWins'] ?? 0,
+      arenaBreakerLosses: json['arenaBreakerLosses'] ?? 0,
     );
   }
 
@@ -65,6 +71,8 @@ class UserModel {
         'totalLosses': totalLosses,
         'rank': rank,
         'achievements': achievements,
+        'arenaBreakerWins': arenaBreakerWins,
+        'arenaBreakerLosses': arenaBreakerLosses,
       };
 
   UserModel copyWith({
@@ -73,6 +81,8 @@ class UserModel {
     int? xp,
     int? coins,
     String? rank,
+    int? arenaBreakerWins,
+    int? arenaBreakerLosses,
   }) {
     return UserModel(
       uid: uid,
@@ -86,6 +96,8 @@ class UserModel {
       totalWins: totalWins,
       totalLosses: totalLosses,
       achievements: achievements,
+      arenaBreakerWins: arenaBreakerWins ?? this.arenaBreakerWins,
+      arenaBreakerLosses: arenaBreakerLosses ?? this.arenaBreakerLosses,
     );
   }
 }

@@ -12,6 +12,15 @@ class GameRoomModel {
   final DateTime? questionDeadline;
   final String? winnerId;
   final List<String> claimedRewards;
+  final List<String> rematchRequests;
+  final String? nextMatchId;
+  
+  // Arena Breaker Fields
+  final bool isArenaBreaker;
+  final Map<String, dynamic>? arenaBreakerQuestion;
+  final Map<String, dynamic> arenaBreakerSubmissions;
+  final bool isArenaBreakerWin;
+  final String? arenaBreakerStatusMessage;
 
   GameRoomModel({
     required this.roomId,
@@ -24,6 +33,13 @@ class GameRoomModel {
     this.questionDeadline,
     this.winnerId,
     this.claimedRewards = const [],
+    this.rematchRequests = const [],
+    this.nextMatchId,
+    this.isArenaBreaker = false,
+    this.arenaBreakerQuestion,
+    this.arenaBreakerSubmissions = const {},
+    this.isArenaBreakerWin = false,
+    this.arenaBreakerStatusMessage,
   });
 
   factory GameRoomModel.fromJson(Map<String, dynamic> json) {
@@ -40,6 +56,13 @@ class GameRoomModel {
           : null,
       winnerId: json['winnerId'],
       claimedRewards: List<String>.from(json['claimedRewards'] ?? []),
+      rematchRequests: List<String>.from(json['rematchRequests'] ?? []),
+      nextMatchId: json['nextMatchId'],
+      isArenaBreaker: json['isArenaBreaker'] ?? false,
+      arenaBreakerQuestion: json['arenaBreakerQuestion'],
+      arenaBreakerSubmissions: Map<String, dynamic>.from(json['arenaBreakerSubmissions'] ?? {}),
+      isArenaBreakerWin: json['isArenaBreakerWin'] ?? false,
+      arenaBreakerStatusMessage: json['arenaBreakerStatusMessage'],
     );
   }
 
@@ -54,5 +77,12 @@ class GameRoomModel {
     'questionDeadline': questionDeadline?.toIso8601String(),
     'winnerId': winnerId,
     'claimedRewards': claimedRewards,
+    'rematchRequests': rematchRequests,
+    'nextMatchId': nextMatchId,
+    'isArenaBreaker': isArenaBreaker,
+    'arenaBreakerQuestion': arenaBreakerQuestion,
+    'arenaBreakerSubmissions': arenaBreakerSubmissions,
+    'isArenaBreakerWin': isArenaBreakerWin,
+    'arenaBreakerStatusMessage': arenaBreakerStatusMessage,
   };
 }

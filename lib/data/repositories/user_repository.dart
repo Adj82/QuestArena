@@ -87,6 +87,7 @@ class UserRepository {
     required int xpGained,
     required int coinsGained,
     required bool isWin,
+    bool isArenaBreakerWin = false,
   }) async {
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
 
@@ -100,15 +101,18 @@ class UserRepository {
       int currentCoins = data['coins'] ?? 0;
       int wins = data['totalWins'] ?? 0;
       int losses = data['totalLosses'] ?? 0;
+      int abWins = data['arenaBreakerWins'] ?? 0;
+      int abLosses = data['arenaBreakerLosses'] ?? 0;
 
       // Update XP and Coins
       currentXp += xpGained;
       currentCoins += coinsGained;
       if (isWin) {
         wins++;
-      } else if (xpGained > 0) {
-        // If it was a draw or loss but they played
+        if (isArenaBreakerWin) abWins++;
+      } else {
         losses++;
+        if (isArenaBreakerWin) abLosses++;
       }
 
       // Check for Level Up
@@ -140,6 +144,17 @@ class UserRepository {
         achievements.add('veteran');
       }
 
+      // Arena Breaker Achievements
+      if (isArenaBreakerWin && isWin && !achievements.contains('arena_breaker')) {
+        achievements.add('arena_breaker');
+      }
+      if (abWins >= 5 && !achievements.contains('clutch_master')) {
+        achievements.add('clutch_master');
+      }
+      if (abWins >= 10 && !achievements.contains('unbreakable')) {
+        achievements.add('unbreakable');
+      }
+
       transaction.update(userRef, {
         'xp': currentXp,
         'level': currentLevel,
@@ -147,6 +162,8 @@ class UserRepository {
         'coins': currentCoins,
         'totalWins': wins,
         'totalLosses': losses,
+        'arenaBreakerWins': abWins,
+        'arenaBreakerLosses': abLosses,
         'rank': rank,
         'achievements': achievements,
       });

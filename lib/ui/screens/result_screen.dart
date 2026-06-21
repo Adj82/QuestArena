@@ -2,14 +2,13 @@
 // Displays the final scores, the winner, and rewards (XP/Coins).
 //
 // KEY CONCEPTS IN THIS FILE:
+// • Rematch Logic: Real-time synchronization for 1v1 rematches.
 // • Lottie: Using high-quality vector animations for "Victory" or "Defeat".
 // • Conditional Layouts: Different colors and text based on whether the user won or lost.
-// • Navigation: Returning the user back to the main Hub (HomeScreen).
 
-import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:lottie/lottie.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
@@ -17,6 +16,7 @@ import '../../providers/user_providers.dart';
 import '../../providers/game_providers.dart';
 import '../../data/models/game_room_model.dart';
 import '../../data/models/match_history_model.dart';
+import 'game_screen.dart';
 
 class ResultScreen extends ConsumerStatefulWidget {
   final GameRoomModel room;
@@ -28,15 +28,34 @@ class ResultScreen extends ConsumerStatefulWidget {
 
 class _ResultScreenState extends ConsumerState<ResultScreen> {
   bool _rewardsClaimed = false;
+  bool _rematchRequested = false;
+  int _rematchTimer = 30;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
     _handleRewards();
+    _startRematchTimer();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  void _startRematchTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted && _rematchTimer > 0) {
+        setState(() => _rematchTimer--);
+      } else {
+        _timer?.cancel();
+      }
+    });
   }
 
   void _handleRewards() async {
-    // Avoid double processing if already handled in this session
     if (_rewardsClaimed) return;
 
     try {
@@ -49,7 +68,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
       final isWinner = widget.room.winnerId == currentUser.uid;
 
-      // 1. Calculate History first so it's ready
       final myScore = currentUser.uid == widget.room.player1['uid'] 
           ? widget.room.player1['score'] 
           : (widget.room.player2?['score'] ?? 0);
@@ -72,13 +90,13 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         playedAt: DateTime.now(),
       );
 
-      // 2. Perform all updates in parallel for speed
       await Future.wait([
         ref.read(userRepositoryProvider).updateUserStats(
           uid: currentUser.uid,
           xpGained: isWinner ? 50 : 15,
           coinsGained: isWinner ? 20 : 5,
           isWin: isWinner,
+          isArenaBreakerWin: widget.room.isArenaBreakerWin,
         ),
         ref.read(gameRepositoryProvider).claimRewards(
           widget.room.roomId,
@@ -87,8 +105,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         ),
         ref.read(userRepositoryProvider).saveMatchHistory(currentUser.uid, history),
       ]);
-      
-      debugPrint('All rewards and history saved successfully!');
     } catch (e) {
       debugPrint('Error claiming rewards: $e');
     } finally {
@@ -98,15 +114,51 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     }
   }
 
+  void _onRematchPressed() async {
+    final user = ref.read(currentUserProvider).value;
+    if (user == null || _rematchRequested) return;
+
+    setState(() => _rematchRequested = true);
+    await ref.read(gameRepositoryProvider).requestRematch(widget.room.roomId, user.uid);
+  }
+
   @override
   Widget build(BuildContext context) {
     final currentUser = ref.watch(currentUserProvider).value;
     if (currentUser == null) return const Scaffold();
 
+    // Listen for rematch creation
+    ref.listen<AsyncValue<GameRoomModel?>>(gameRoomProvider(widget.room.roomId), (prev, next) {
+      final room = next.value;
+      if (room == null) return;
+
+      // 1. If nextMatchId is set, navigate to the fresh room
+      if (room.nextMatchId != null && mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => GameScreen(roomId: room.nextMatchId!)),
+        );
+      }
+
+      // 2. If both requested, Master (Player 1) triggers the new room creation
+      if (room.rematchRequests.length == 2 && room.nextMatchId == null) {
+        if (currentUser.uid == room.player1['uid']) {
+          ref.read(gameRepositoryProvider).createRematchGame(
+            oldRoomId: room.roomId,
+            player1: room.player1,
+            player2: room.player2!,
+          );
+        }
+      }
+    });
+
+    // Re-watch the room to get real-time rematch count
+    final roomState = ref.watch(gameRoomProvider(widget.room.roomId)).value ?? widget.room;
+    final otherRequested = roomState.rematchRequests.any((id) => id != currentUser.uid);
+    final waitingForOpponent = _rematchRequested && roomState.rematchRequests.length < 2;
+
     final isWinner = widget.room.winnerId == currentUser.uid;
     final isDraw = widget.room.winnerId == 'draw';
     
-    // Determine the player's final score
     final myScore = currentUser.uid == widget.room.player1['uid'] 
         ? widget.room.player1['score'] 
         : (widget.room.player2?['score'] ?? 0);
@@ -118,12 +170,11 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background Glow
           Container(
             decoration: BoxDecoration(
               gradient: RadialGradient(
                 colors: [
-                  isWinner ? AppColors.teal.withOpacity(0.2) : AppColors.red.withOpacity(0.2),
+                  isWinner ? AppColors.teal.withValues(alpha: 0.2) : AppColors.red.withValues(alpha: 0.2),
                   AppColors.primaryBg,
                 ],
                 radius: 1.0,
@@ -135,9 +186,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 32.0),
               child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Animation Placeholder/Lottie
                   SizedBox(
                     height: 140,
                     child: isWinner 
@@ -148,9 +197,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                   const SizedBox(height: 16),
 
                   Text(
-                    isDraw ? "IT'S A DRAW!" : (isWinner ? 'VICTORY!' : 'DEFEAT'),
+                    isDraw ? "IT'S A DRAW!" : (widget.room.isArenaBreakerWin ? 'WINNER BY ARENA BREAKER' : (isWinner ? 'VICTORY!' : 'DEFEAT')),
                     style: AppTextStyles.display.copyWith(
-                      fontSize: 36,
+                      fontSize: widget.room.isArenaBreakerWin ? 24 : 36,
                       color: isWinner ? AppColors.teal : AppColors.red,
                     ),
                     textAlign: TextAlign.center,
@@ -158,7 +207,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Score Summary Card
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -177,7 +225,6 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
                   const SizedBox(height: 24),
 
-                  // Rewards Section
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                     children: [
@@ -200,17 +247,38 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
 
                   const SizedBox(height: 40),
 
-                  // Action Buttons
-                  ElevatedButton(
+                  // REMATCH SECTION
+                  if (_rematchTimer > 0 && roomState.nextMatchId == null) ...[
+                    if (waitingForOpponent)
+                      Column(
+                        children: [
+                          const CircularProgressIndicator(color: AppColors.gold),
+                          const SizedBox(height: 12),
+                          Text('Waiting for opponent...', style: AppTextStyles.label),
+                        ],
+                      )
+                    else
+                      ElevatedButton.icon(
+                        onPressed: _onRematchPressed,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: Text(otherRequested ? 'ACCEPT REMATCH' : 'REQUEST REMATCH'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: otherRequested ? AppColors.teal : AppColors.surface,
+                          minimumSize: const Size(double.infinity, 56),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ).animate(target: otherRequested ? 1 : 0).shimmer(),
+                    
+                    const SizedBox(height: 12),
+                    Text('Offer expires in $_rematchTimer s', style: AppTextStyles.label.copyWith(fontSize: 10)),
+                  ],
+
+                  const SizedBox(height: 16),
+
+                  // BACK TO HOME
+                  TextButton(
                     onPressed: !_rewardsClaimed ? null : () => Navigator.of(context).popUntil((route) => route.isFirst),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.purple,
-                      minimumSize: const Size(double.infinity, 56),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                    ),
-                    child: _rewardsClaimed 
-                        ? const Text('BACK TO HOME', style: TextStyle(fontWeight: FontWeight.bold))
-                        : const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2)),
+                    child: Text('BACK TO HOME', style: AppTextStyles.label.copyWith(color: AppColors.textMuted)),
                   ),
                 ],
               ),
