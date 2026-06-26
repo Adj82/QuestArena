@@ -28,13 +28,19 @@ class MatchmakingRepository {
     // 2. Look for another player who is also searching
     final potentialMatches = await _db.collection('matchmaking')
         .where('status', isEqualTo: 'searching')
-        .where('categoryId', isEqualTo: ticket.categoryId)
         .get();
 
-    // Filter out our own ticket in Dart to avoid complex Firestore index requirements
-    final matchDoc = potentialMatches.docs
-        .where((doc) => doc.id != ticket.uid)
-        .firstOrNull;
+    // Filter in Dart to avoid requiring a Firestore composite index for category matching.
+    QueryDocumentSnapshot<Map<String, dynamic>>? matchDoc;
+    for (final doc in potentialMatches.docs) {
+      if (doc.id == ticket.uid) continue;
+
+      final data = doc.data();
+      if (data['categoryId'] == ticket.categoryId) {
+        matchDoc = doc;
+        break;
+      }
+    }
 
     if (matchDoc != null) {
       final opponentUid = matchDoc.id;
