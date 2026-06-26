@@ -13,6 +13,7 @@ import '../../../data/models/matchmaking_model.dart';
 import '../../../core/utils/rank_calculator.dart';
 import '../store_screen.dart';
 import '../matchmaking_screen.dart';
+import '../../widgets/category_picker_sheet.dart';
 
 class DashboardTab extends ConsumerWidget {
   const DashboardTab({super.key});
@@ -176,11 +177,15 @@ class DashboardTab extends ConsumerWidget {
                 // BATTLE BUTTON
                 GestureDetector(
                   onTap: () async {
+                    final category = await CategoryPickerSheet.show(context);
+                    if (category == null || !context.mounted) return;
                     final ticket = MatchmakingModel(
                       uid: user.uid,
                       username: user.username,
                       avatarUrl: user.avatarUrl,
                       rank: user.rank,
+                      categoryId: category.id,
+                      categoryName: category.name,
                       searchStartedAt: DateTime.now(),
                     );
 

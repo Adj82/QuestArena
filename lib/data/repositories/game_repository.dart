@@ -4,6 +4,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
 import '../../core/constants/api_constants.dart';
+import '../../core/models/quiz_category.dart';
 import '../../core/utils/game_utils.dart';
 import '../models/game_room_model.dart';
 
@@ -14,13 +15,17 @@ class GameRepository {
   GameRepository(this._dio);
 
   // Create a private room
-  Future<String> createPrivateRoom(Map<String, dynamic> player1Data, String code) async {
+  Future<String> createPrivateRoom(
+    Map<String, dynamic> player1Data,
+    String code,
+    QuizCategory category,
+  ) async {
     final roomId = _db.collection('gameRooms').doc().id;
     
     // Fetch questions from client side since Cloud Functions are not available on Spark plan
     List<Map<String, dynamic>> questions = [];
     try {
-      final response = await _dio.get(ApiConstants.triviaUrl);
+      final response = await _dio.get(ApiConstants.triviaUrlForCategory(category.id));
       questions = (response.data['results'] as List).map((q) => {
         'question': GameUtils.decodeHtmlEntities(q['question']),
         'correct_answer': GameUtils.decodeHtmlEntities(q['correct_answer']),
@@ -36,6 +41,8 @@ class GameRepository {
     await _db.collection('gameRooms').doc(roomId).set({
       'roomId': roomId,
       'roomCode': code,
+      'categoryId': category.id,
+      'categoryName': category.name,
       'status': 'waiting',
       'player1': {...player1Data, 'isReady': false, 'score': 0, 'answers': []},
       'player2': null,
@@ -317,13 +324,15 @@ class GameRepository {
     required String oldRoomId,
     required Map<String, dynamic> player1,
     required Map<String, dynamic> player2,
+    required int? categoryId,
+    required String categoryName,
   }) async {
     final newRoomId = _db.collection('gameRooms').doc().id;
 
     // Fetch fresh questions
     List<Map<String, dynamic>> questions = [];
     try {
-      final response = await _dio.get(ApiConstants.triviaUrl);
+      final response = await _dio.get(ApiConstants.triviaUrlForCategory(categoryId));
       questions = (response.data['results'] as List).map((q) => {
         'question': GameUtils.decodeHtmlEntities(q['question']),
         'correct_answer': GameUtils.decodeHtmlEntities(q['correct_answer']),
@@ -351,6 +360,8 @@ class GameRepository {
     batch.set(_db.collection('gameRooms').doc(newRoomId), {
       'roomId': newRoomId,
       'roomCode': '',
+      'categoryId': categoryId,
+      'categoryName': categoryName,
       'status': 'waiting',
       'player1': resetPlayer(player1),
       'player2': resetPlayer(player2),

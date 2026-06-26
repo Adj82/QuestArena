@@ -14,6 +14,8 @@ class GameRoomModel {
   final List<String> claimedRewards;
   final List<String> rematchRequests;
   final String? nextMatchId;
+  final int? categoryId;
+  final String categoryName;
   
   // Arena Breaker Fields
   final bool isArenaBreaker;
@@ -35,6 +37,8 @@ class GameRoomModel {
     this.claimedRewards = const [],
     this.rematchRequests = const [],
     this.nextMatchId,
+    this.categoryId,
+    this.categoryName = 'Mixed / Random',
     this.isArenaBreaker = false,
     this.arenaBreakerQuestion,
     this.arenaBreakerSubmissions = const {},
@@ -58,6 +62,8 @@ class GameRoomModel {
       claimedRewards: List<String>.from(json['claimedRewards'] ?? []),
       rematchRequests: List<String>.from(json['rematchRequests'] ?? []),
       nextMatchId: json['nextMatchId'],
+      categoryId: json['categoryId'],
+      categoryName: json['categoryName'] ?? 'Mixed / Random',
       isArenaBreaker: json['isArenaBreaker'] ?? false,
       arenaBreakerQuestion: json['arenaBreakerQuestion'],
       arenaBreakerSubmissions: Map<String, dynamic>.from(json['arenaBreakerSubmissions'] ?? {}),
@@ -79,6 +85,8 @@ class GameRoomModel {
     'claimedRewards': claimedRewards,
     'rematchRequests': rematchRequests,
     'nextMatchId': nextMatchId,
+    'categoryId': categoryId,
+    'categoryName': categoryName,
     'isArenaBreaker': isArenaBreaker,
     'arenaBreakerQuestion': arenaBreakerQuestion,
     'arenaBreakerSubmissions': arenaBreakerSubmissions,

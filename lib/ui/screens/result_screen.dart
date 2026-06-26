@@ -146,6 +146,8 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
             oldRoomId: room.roomId,
             player1: room.player1,
             player2: room.player2!,
+            categoryId: room.categoryId,
+            categoryName: room.categoryName,
           );
         }
       }
