@@ -75,7 +75,7 @@ class GameRepository {
     QuizCategory category,
   ) async {
     final roomId = _db.collection('gameRooms').doc().id;
-    
+
     // Fetch questions from client side since Cloud Functions are not available on Spark plan
     List<Map<String, dynamic>> questions = [];
     try {
@@ -202,14 +202,14 @@ class GameRepository {
     required int scoreIncrement,
   }) async {
     final roomRef = _db.collection('gameRooms').doc(roomId);
-    
+
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(roomRef);
       if (!snapshot.exists) return;
 
       final data = snapshot.data() as Map<String, dynamic>;
       final playerKey = 'player$playerNumber';
-      
+
       final player1 = data['player1'] as Map<String, dynamic>;
       final player2 = data['player2'] as Map<String, dynamic>?;
 
@@ -234,7 +234,7 @@ class GameRepository {
 
       final currentP1Answers = List<String>.from(player1['answers'] ?? []);
       final currentP2Answers = List<String>.from(player2['answers'] ?? []);
-      
+
       final currentIdx = data['currentQuestionIndex'] ?? 0;
       final questions = List<dynamic>.from(data['questions'] ?? []);
       if (currentIdx < 0 || currentIdx >= questions.length) {
@@ -265,7 +265,7 @@ class GameRepository {
 
       // 1. Update current player's answers and score
       final updatedAnswers = playerNumber == 1 ? currentP1Answers : currentP2Answers;
-      
+
       // Safety: Don't add more answers than there are questions or if already answered this index
       if (updatedAnswers.length > currentIdx) {
         _flagSuspiciousAttempt(
@@ -303,6 +303,11 @@ class GameRepository {
         );
       }
 
+      // Padding for missed questions due to disconnect/reconnect flow.
+      while (updatedAnswers.length < currentIdx) {
+        updatedAnswers.add("TIMEOUT");
+      }
+
       updatedAnswers.add(decodedAnswer);
       final oldScore = (playerNumber == 1 ? player1['score'] : player2['score']) ?? 0;
       final newScore = oldScore + verifiedScore;
@@ -322,7 +327,21 @@ class GameRepository {
       final p1Len = playerNumber == 1 ? updatedAnswers.length : currentP1Answers.length;
       final p2Len = playerNumber == 2 ? updatedAnswers.length : currentP2Answers.length;
 
+      final opponentId = playerNumber == 1 ? player2['uid'] : player1['uid'];
+      final opponentPresence = data['presence']?[opponentId];
+      final isOpponentOnline = opponentPresence?['isOnline'] ?? true;
+
+      // Advance if BOTH answered OR if current player answered and opponent is offline
+      bool shouldAdvance = false;
       if (p1Len > currentIdx && p2Len > currentIdx) {
+        shouldAdvance = true;
+      } else if (playerNumber == 1 && p1Len > currentIdx && !isOpponentOnline) {
+        shouldAdvance = true;
+      } else if (playerNumber == 2 && p2Len > currentIdx && !isOpponentOnline) {
+        shouldAdvance = true;
+      }
+
+      if (shouldAdvance) {
         if (currentIdx + 1 < questions.length) {
           transaction.update(roomRef, {
             'currentQuestionIndex': currentIdx + 1,
@@ -332,7 +351,7 @@ class GameRepository {
           // Game Finished
           final p1Score = playerNumber == 1 ? newScore : (player1['score'] ?? 0);
           final p2Score = playerNumber == 2 ? newScore : (player2['score'] ?? 0);
-          
+
           if (p1Score == p2Score) {
             // TIE DETECTED -> Trigger Arena Breaker
             transaction.update(roomRef, {
@@ -465,37 +484,51 @@ class GameRepository {
       transaction.update(roomRef, {'arenaBreakerSubmissions': submissions});
 
       // Check if both have submitted or if one answered correctly (instant win)
-      if (submissions.length == 2) {
+      final opponentId = userId == player1['uid'] ? player2['uid'] : player1['uid'];
+      final opponentPresence = data['presence']?[opponentId];
+      final isOpponentOnline = opponentPresence?['isOnline'] ?? true;
+
+      // Check if both have submitted OR if one answered correctly (instant win) OR if opponent is offline
+      if (submissions.length == 2 || isOpponentOnline == false || isCorrect == true) {
         final s1 = submissions[player1['uid']];
         final s2 = submissions[player2['uid']];
 
         String? winnerId;
 
-        if (s1['isCorrect'] && !s2['isCorrect']) {
-          winnerId = player1['uid'];
-        } else if (!s1['isCorrect'] && s2['isCorrect']) {
-          winnerId = player2['uid'];
-        } else if (s1['isCorrect'] && s2['isCorrect']) {
-          // Both correct -> Compare response times
-          if (s1['timestamp'] < s2['timestamp']) {
+        // Instant win if current player is correct and opponent is offline or hasn't answered yet
+        if (isCorrect && (submissions.length == 1)) {
+           winnerId = userId;
+        } else if (s1 != null && s2 != null) {
+          if (s1['isCorrect'] && !s2['isCorrect']) {
             winnerId = player1['uid'];
-          } else if (s2['timestamp'] < s1['timestamp']) {
+          } else if (!s1['isCorrect'] && s2['isCorrect']) {
             winnerId = player2['uid'];
+          } else if (s1['isCorrect'] && s2['isCorrect']) {
+            // Both correct -> Compare response times
+            if (s1['timestamp'] < s2['timestamp']) {
+              winnerId = player1['uid'];
+            } else if (s2['timestamp'] < s1['timestamp']) {
+              winnerId = player2['uid'];
+            } else {
+              // CASE 4: PERFECT TIE (Identical times)
+              transaction.update(roomRef, {
+                'arenaBreakerStatusMessage': 'Perfect Tie! Launching another Arena Breaker round...',
+              });
+              _scheduleNextABRound(roomId);
+              return;
+            }
           } else {
-            // CASE 4: PERFECT TIE (Identical times)
+            // CASE 2: BOTH INCORRECT
             transaction.update(roomRef, {
-              'arenaBreakerStatusMessage': 'Perfect Tie! Launching another Arena Breaker round...',
+              'arenaBreakerStatusMessage': 'Both players answered incorrectly. Next question loading...',
             });
             _scheduleNextABRound(roomId);
             return;
           }
-        } else {
-          // CASE 2: BOTH INCORRECT
-          transaction.update(roomRef, {
-            'arenaBreakerStatusMessage': 'Both players answered incorrectly. Next question loading...',
-          });
-          _scheduleNextABRound(roomId);
-          return;
+        } else if (submissions.length == 1 && !isCorrect && !isOpponentOnline) {
+            // Current player wrong and opponent offline -> New round
+            _scheduleNextABRound(roomId);
+            return;
         }
 
         if (winnerId != null) {
@@ -528,7 +561,7 @@ class GameRepository {
   // Claim match rewards
   Future<void> claimRewards(String roomId, String userId, bool isWin) async {
     final roomRef = _db.collection('gameRooms').doc(roomId);
-    
+
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(roomRef);
       if (!snapshot.exists) return;
@@ -623,11 +656,11 @@ class GameRepository {
   /// Declares a winner by forfeit if the opponent fails to reconnect.
   Future<void> handleForfeit(String roomId, String winnerId) async {
     final roomRef = _db.collection('gameRooms').doc(roomId);
-    
+
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(roomRef);
       if (!snapshot.exists) return;
-      
+
       final data = snapshot.data() as Map<String, dynamic>;
       if (data['status'] == 'finished') return; // Match already finished
 
@@ -646,5 +679,23 @@ class GameRepository {
       'winnerId': opponentId,
       'forfeitWinnerId': opponentId,
     });
+  }
+
+  /// Finds an active match for the given user that started recently (within 10 mins).
+  Future<GameRoomModel?> findActiveMatch(String uid) async {
+    final tenMinutesAgo = DateTime.now().subtract(const Duration(minutes: 10));
+
+    final query = await _db.collection('gameRooms')
+        .where('status', whereIn: ['active', 'arena_breaker'])
+        .where('createdAt', isGreaterThan: Timestamp.fromDate(tenMinutesAgo))
+        .get();
+
+    for (var doc in query.docs) {
+      final data = doc.data();
+      if (data['player1']['uid'] == uid || data['player2']?['uid'] == uid) {
+        return GameRoomModel.fromJson(data);
+      }
+    }
+    return null;
   }
 }

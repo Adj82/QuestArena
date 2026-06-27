@@ -94,7 +94,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     setState(() => _forfeitCountdown = 20);
     _forfeitTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (_forfeitCountdown > 0) {
-        setState(() => _forfeitCountdown--);
+        if (mounted) setState(() => _forfeitCountdown--);
       } else {
         _forfeitTimer?.cancel();
         _declareForfeitVictory();
@@ -132,8 +132,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
 
     if (confirm == true) {
-      final opponentId = user.uid == room.player1['uid'] 
-          ? (room.player2?['uid'] ?? '') 
+      final opponentId = user.uid == room.player1['uid']
+          ? (room.player2?['uid'] ?? '')
           : room.player1['uid'];
       await ref.read(gameRepositoryProvider).leaveMatch(widget.roomId, user.uid, opponentId);
     }
@@ -252,79 +252,95 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
       // Handle match finish
       if (room.status == 'finished') {
+        _forfeitTimer?.cancel();
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => ResultScreen(room: room)),
         );
         return;
       }
 
-      // Presence Detection
-      final String p1Uid = room.player1['uid'] ?? '';
-      final String? p2Uid = room.player2?['uid'];
-      final String? opponentId = user.uid == p1Uid ? p2Uid : p1Uid;
-      
-      if (opponentId != null) {
-        final opponentPresence = room.presence[opponentId];
-        final isOnline = opponentPresence?['isOnline'] ?? true;
+      // Presence Detection (Only if game is active or in AB)
+      if (room.status == 'active' || room.status == 'arena_breaker') {
+        final String p1Uid = room.player1['uid'] ?? '';
+        final String? p2Uid = room.player2?['uid'];
+        final String? opponentId = user.uid == p1Uid ? p2Uid : p1Uid;
 
-        if (!isOnline && !_isOpponentDisconnected) {
-          _isOpponentDisconnected = true;
-          _startForfeitTimer();
-        } else if (isOnline && _isOpponentDisconnected) {
-          _isOpponentDisconnected = false;
-          _forfeitTimer?.cancel();
+        if (opponentId != null) {
+          final opponentPresence = room.presence[opponentId];
+          final isOnline = opponentPresence?['isOnline'] ?? true;
+
+          if (!isOnline && !_isOpponentDisconnected) {
+            setState(() => _isOpponentDisconnected = true);
+            _startForfeitTimer();
+          } else if (isOnline && _isOpponentDisconnected) {
+            setState(() => _isOpponentDisconnected = false);
+            _forfeitTimer?.cancel();
+          }
+        }
+      } else {
+        // If match not active/AB, hide disconnect banner
+        _forfeitTimer?.cancel();
+        if (_isOpponentDisconnected) {
+          setState(() => _isOpponentDisconnected = false);
         }
       }
     });
 
     final roomAsync = ref.watch(gameRoomProvider(widget.roomId));
 
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
-          onPressed: _handleLeaveMatch,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleLeaveMatch();
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.close_rounded, color: AppColors.textMuted),
+            onPressed: _handleLeaveMatch,
+          ),
+          title: _isOpponentDisconnected
+            ? Text('OPPONENT DISCONNECTED', style: AppTextStyles.label.copyWith(color: AppColors.red, fontSize: 10))
+            : null,
+          centerTitle: true,
         ),
-        title: _isOpponentDisconnected 
-          ? Text('OPPONENT DISCONNECTED', style: AppTextStyles.label.copyWith(color: AppColors.red, fontSize: 10))
-          : null,
-        centerTitle: true,
-      ),
-      body: roomAsync.when(
-        loading: () => const Center(
-            child: CircularProgressIndicator(color: AppColors.gold)),
-        error: (e, s) => Center(child: Text('Error: $e')),
-        data: (room) {
-          if (room == null) return const Center(child: Text('Room Error'));
+        body: roomAsync.when(
+          loading: () => const Center(
+              child: CircularProgressIndicator(color: AppColors.gold)),
+          error: (e, s) => Center(child: Text('Error: $e')),
+          data: (room) {
+            if (room == null) return const Center(child: Text('Room Error'));
 
-          return Stack(
-            children: [
-              // Main Game UI
-              _buildMainUI(room),
+            return Stack(
+              children: [
+                // Main Game UI
+                _buildMainUI(room),
 
-              // Opponent Disconnect Banner
-              if (_isOpponentDisconnected)
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    color: AppColors.red.withValues(alpha: 0.9),
-                    padding: const EdgeInsets.all(12),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('Opponent disconnected.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-                        Text('Ending match in $_forfeitCountdown seconds...', style: const TextStyle(fontSize: 12, color: Colors.white)),
-                      ],
-                    ),
-                  ).animate().slideY(begin: -1, end: 0),
-                ),
-            ],
-          );
-        },
+                // Opponent Disconnect Banner
+                if (_isOpponentDisconnected)
+                  Positioned(
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      color: AppColors.red.withValues(alpha: 0.9),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Text('Opponent disconnected.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                          Text('Ending match in $_forfeitCountdown seconds...', style: const TextStyle(fontSize: 12, color: Colors.white)),
+                        ],
+                      ),
+                    ).animate().slideY(begin: -1, end: 0),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }
@@ -674,7 +690,7 @@ class _ABCountdownState extends State<_ABCountdown> {
     super.initState();
     _timer = Timer.periodic(const Duration(seconds: 1), (t) {
       if (_count > 1) {
-        setState(() => _count--);
+        if (mounted) setState(() => _count--);
       } else {
         _timer?.cancel();
         widget.onFinished();
