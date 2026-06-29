@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
+import '../../../core/utils/rank_system.dart';
 import '../../../providers/leaderboard_providers.dart';
 import '../../../providers/user_providers.dart';
 import '../../../data/models/leaderboard_model.dart';
@@ -256,6 +257,10 @@ class _MvpCard extends StatelessWidget {
                             color: AppColors.gold.withValues(alpha: 0.2),
                             blurRadius: 20,
                             spreadRadius: 2,
+                          ),
+                          Text(
+                            'LVL ${player.level} • ${RankSystem.getRankName(player.rank, player.subRank)}', 
+                            style: AppTextStyles.label.copyWith(fontSize: 10),
                           ),
                         ],
                       ),

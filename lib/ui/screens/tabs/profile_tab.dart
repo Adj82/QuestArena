@@ -11,6 +11,12 @@ import '../../../providers/user_providers.dart';
 import '../../../providers/auth_providers.dart';
 import '../../../providers/leaderboard_providers.dart';
 import '../../../core/errors/result.dart';
+import 'edit_profile_screen.dart';
+
+import '../../widgets/xp_progress_bar.dart';
+import '../../widgets/rank_badge.dart';
+import '../../widgets/rank_progress_bar.dart';
+import '../../../core/utils/rank_system.dart';
 
 class ProfileTab extends ConsumerWidget {
   const ProfileTab({super.key});
@@ -21,24 +27,61 @@ class ProfileTab extends ConsumerWidget {
     final weeklyMvp = ref.watch(weeklyMvpProvider);
 
     return userAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      loading: () => const Center(
+        child: CircularProgressIndicator(color: AppColors.gold),
+      ),
       error: (e, s) => Center(child: Text('Error: $e')),
       data: (user) {
-        if (user == null) return const Center(child: Text('User not found'));
+        if (user == null) {
+          return const Center(child: Text('User profile not found.'));
+        }
+
+        final totalMatches = user.totalWins + user.totalLosses;
+
+        final winRate = user.matchesPlayed > 0 
+            ? (user.wins / user.matchesPlayed * 100).toStringAsFixed(1)
+            : '0';
 
         final isMvp = weeklyMvp?.uid == user.uid;
 
         // List of all possible achievements to show "Locked" ones
         final allAchievements = [
+          {
+            'id': 'first_win',
+            'name': 'First Blood',
+            'desc': 'Win your first match',
+            'icon': Icons.flash_on_rounded
+          },
+          {
+            'id': 'on_fire',
+            'name': 'On Fire',
+            'desc': 'Win 3 games in a row',
+            'icon': Icons.whatshot
+          },
+          {
+            'id': 'veteran',
+            'name': 'Veteran',
+            'desc': 'Play 100 matches',
+            'icon': Icons.military_tech
+          },
+          {
+            'id': 'scholar',
+            'name': 'Scholar',
+            'desc': 'Get 10/10 in one match',
+            'icon': Icons.school
+          },
           {'id': 'first_win', 'name': 'First Blood', 'desc': 'Win your first match', 'icon': Icons.flash_on_rounded},
           {'id': 'on_fire', 'name': 'On Fire', 'desc': 'Win 3 games in a row', 'icon': Icons.whatshot},
-          {'id': 'veteran', 'name': 'Veteran', 'desc': 'Play 100 matches', 'icon': Icons.military_tech},
+          {'id': 'veteran', 'name': 'Veteran', 'desc': 'Win 10 matches', 'icon': Icons.military_tech},
           {'id': 'scholar', 'name': 'Scholar', 'desc': 'Get 10/10 in one match', 'icon': Icons.school},
         ];
 
         return Scaffold(
           appBar: AppBar(
-            title: Text('PLAYER PROFILE', style: AppTextStyles.display.copyWith(fontSize: 18)),
+            title: Text(
+              'PLAYER PROFILE',
+              style: AppTextStyles.display.copyWith(fontSize: 18),
+            ),
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
@@ -62,12 +105,77 @@ class ProfileTab extends ConsumerWidget {
                       width: 100,
                       height: 100,
                       fit: BoxFit.cover,
-                      placeholder: (context, url) => const CircularProgressIndicator(),
-                      errorWidget: (context, url, error) => const Icon(Icons.person, size: 40),
+                      placeholder: (context, url) =>
+                          const CircularProgressIndicator(),
+                      errorWidget: (context, url, error) =>
+                          const Icon(Icons.person, size: 40),
+                Stack(
+                  alignment: Alignment.bottomRight,
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: AppColors.surface,
+                      child: ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: user.avatarUrl ?? '',
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const CircularProgressIndicator(),
+                          errorWidget: (context, url, error) => const Icon(Icons.person, size: 40),
+                        ),
+                      ),
+                    ),
+                    RankBadge(rank: user.rank, subRank: user.subRank, size: 36),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  user.username,
+                  style: AppTextStyles.headline,
+                ),
+                Text(
+                  user.rank,
+                  style: AppTextStyles.label.copyWith(color: AppColors.gold),
+                ),
+
+                const SizedBox(height: 16),
+
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const EditProfileScreen(),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.edit),
+                  label: const Text('Edit Profile'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.purple,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(height: 32),
+
+                // Stats Summary
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [
+                        Color(0xFF1B1B30),
+                        Color(0xFF131325),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: AppColors.gold.withValues(alpha: 0.3),
+                    ),
                 Text(user.username, style: AppTextStyles.headline),
                 
                 Text(user.rank, style: AppTextStyles.label.copyWith(color: AppColors.gold)),
@@ -114,6 +222,126 @@ class ProfileTab extends ConsumerWidget {
                 ),
 
                 const SizedBox(height: 40),
+                Text(
+                  RankSystem.getRankName(user.rank, user.subRank),
+                  style: AppTextStyles.label.copyWith(
+                    color: RankSystem.getRankColor(user.rank),
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                
+                const SizedBox(height: 24),
+                
+                // XP Progress Bar
+                XpProgressBar(totalXp: user.xp),
+                
+                if (user.rank != 'Legend' && user.rank != 'Unranked') ...[
+                  const SizedBox(height: 16),
+                  RankProgressBar(rank: user.rank, subRank: user.subRank, points: user.rankPoints),
+                ],
+
+                const SizedBox(height: 32),
+                
+                // Stats Summary
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.surface),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ProfileInfoCard(
+                              title: 'RANK',
+                              value: user.rank,
+                              icon: Icons.workspace_premium,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _ProfileInfoCard(
+                              title: 'COINS',
+                              value: '${user.coins}',
+                              icon: Icons.monetization_on,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _ProfileInfoCard(
+                              title: 'MATCHES',
+                              value: '$totalMatches',
+                              icon: Icons.sports_esports,
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: _ProfileInfoCard(
+                              title: 'LEVEL',
+                              value: '${user.level}',
+                              icon: Icons.trending_up,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 20),
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          'XP PROGRESS',
+                          style: AppTextStyles.label,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(10),
+                        child: LinearProgressIndicator(
+                          value: user.xp / user.xpToNextLevel,
+                          minHeight: 10,
+                          backgroundColor: AppColors.surface,
+                          color: AppColors.gold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '${user.xp}/${user.xpToNextLevel} XP',
+                        style: AppTextStyles.label,
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _ProfileStat(label: 'PLAYED', value: '${user.matchesPlayed}'),
+                          _ProfileStat(label: 'WINS', value: '${user.wins}'),
+                          _ProfileStat(label: 'COINS', value: '${user.coins}'),
+                        ],
+                      ),
+                      const Divider(color: AppColors.surface, height: 32, indent: 24, endIndent: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _ProfileStat(label: 'LOSSES', value: '${user.losses}'),
+                          _ProfileStat(label: 'DRAWS', value: '${user.draws}'),
+                          _ProfileStat(label: 'WIN RATE', value: '$winRate%'),
+                        ],
+                      ),
+                      const Divider(color: AppColors.surface, height: 32, indent: 24, endIndent: 24),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          _ProfileStat(label: 'CURRENT STREAK', value: '${user.currentWinStreak}'),
+                          _ProfileStat(label: 'HIGHEST STREAK', value: '${user.highestWinStreak}'),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
 
                 // Achievement Grid
                 Text('ACHIEVEMENTS', style: AppTextStyles.label),
@@ -130,28 +358,39 @@ class ProfileTab extends ConsumerWidget {
                   itemCount: allAchievements.length,
                   itemBuilder: (context, index) {
                     final achievement = allAchievements[index];
-                    final isUnlocked = user.achievements.contains(achievement['id']);
-                    
+                    final isUnlocked =
+                        user.achievements.contains(achievement['id']);
+
                     return Container(
                       padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
+                        color: isUnlocked
+                            ? AppColors.cardBg
+                            : AppColors.cardBg.withValues(alpha: 0.3),
                         color: isUnlocked ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.3),
                         borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isUnlocked ? AppColors.gold : AppColors.surface),
+                        border: Border.all(
+                            color: isUnlocked
+                                ? AppColors.gold
+                                : AppColors.surface),
                       ),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
-                            achievement['icon'] as IconData, 
-                            color: isUnlocked ? AppColors.gold : AppColors.textMuted,
+                            achievement['icon'] as IconData,
+                            color: isUnlocked
+                                ? AppColors.gold
+                                : AppColors.textMuted,
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            achievement['name'] as String, 
+                            achievement['name'] as String,
                             style: AppTextStyles.bodyMd.copyWith(
                               fontSize: 14,
-                              color: isUnlocked ? AppColors.textPrimary : AppColors.textMuted,
+                              color: isUnlocked
+                                  ? AppColors.textPrimary
+                                  : AppColors.textMuted,
                             ),
                           ),
                         ],
@@ -164,11 +403,14 @@ class ProfileTab extends ConsumerWidget {
 
                 // Delete Account Button
                 TextButton.icon(
-                  onPressed: () => _showDeleteConfirmation(context, ref, user.uid),
-                  icon: const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
+                  onPressed: () =>
+                      _showDeleteConfirmation(context, ref, user.uid),
+                  icon: const Icon(Icons.delete_forever_rounded,
+                      color: AppColors.red, size: 20),
                   label: Text(
-                    'DELETE ACCOUNT', 
-                    style: AppTextStyles.label.copyWith(color: AppColors.red, fontWeight: FontWeight.bold),
+                    'DELETE ACCOUNT',
+                    style: AppTextStyles.label.copyWith(
+                        color: AppColors.red, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -180,12 +422,14 @@ class ProfileTab extends ConsumerWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String uid) {
+  void _showDeleteConfirmation(
+      BuildContext context, WidgetRef ref, String uid) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBg,
-        title: Text('DELETE ACCOUNT?', style: AppTextStyles.headline.copyWith(color: AppColors.red)),
+        title: Text('DELETE ACCOUNT?',
+            style: AppTextStyles.headline.copyWith(color: AppColors.red)),
         content: Text(
           'This action is permanent. All your XP, coins, and achievements will be lost forever.',
           style: AppTextStyles.bodyMd,
@@ -198,24 +442,27 @@ class ProfileTab extends ConsumerWidget {
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(context); // Close dialog
-              
+
               // 1. Delete Firestore data first
               await ref.read(userRepositoryProvider).deleteUserProfile(uid);
-              
+
               // 2. Delete Auth account
-              final result = await ref.read(authRepositoryProvider).deleteAccount();
-              
+              final result =
+                  await ref.read(authRepositoryProvider).deleteAccount();
+
               if (context.mounted && result is Failure) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
-                    content: Text((result as Failure).error.message),
+                    content: Text(result.error.message),
                     backgroundColor: AppColors.red,
                   ),
                 );
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-            child: const Text('DELETE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text('DELETE',
+                style:
+                    TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -223,8 +470,8 @@ class ProfileTab extends ConsumerWidget {
   }
 }
 
-class _ProfileStat extends StatelessWidget {
-  final String label;
+class _ProfileInfoCard extends StatelessWidget {
+  final String title;
   final String value;
   final Color color;
   final IconData icon;
@@ -234,6 +481,12 @@ class _ProfileStat extends StatelessWidget {
     required this.value, 
     required this.color, 
     required this.icon
+  final IconData icon;
+
+  const _ProfileInfoCard({
+    required this.title,
+    required this.value,
+    required this.icon,
   });
 
   @override
@@ -245,6 +498,32 @@ class _ProfileStat extends StatelessWidget {
         Text(value, style: AppTextStyles.headline.copyWith(color: Colors.white, fontSize: 20)),
         Text(label, style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textMuted)),
       ],
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.surface,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            icon,
+            color: AppColors.gold,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: AppTextStyles.headline,
+          ),
+          Text(
+            title,
+            style: AppTextStyles.label,
+          ),
+        ],
+      ),
     );
   }
 }
