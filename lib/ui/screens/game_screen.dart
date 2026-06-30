@@ -32,6 +32,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   List<String> _shuffledOptions = [];
   List<String> _fiftyFiftyHiddenOptions = [];
   int _lastQuestionIndex = -1;
+  String? _lastABQuestionText;
   int _lastABRound = 0;
   bool _hasUsedFiftyFifty = false;
 
@@ -523,6 +524,13 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
     final question = room.arenaBreakerQuestion;
     if (question == null) return const Center(child: CircularProgressIndicator());
+
+    // Refresh options if the AB question has changed
+    final qTextRaw = question['question']?.toString();
+    if (_lastABQuestionText != qTextRaw) {
+      _prepareABOptions(question);
+      _lastABQuestionText = qTextRaw;
+    }
 
     return SafeArea(
       child: Padding(
