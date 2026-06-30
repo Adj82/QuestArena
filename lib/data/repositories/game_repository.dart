@@ -3,6 +3,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/utils/game_utils.dart';
 import '../models/game_room_model.dart';
@@ -29,7 +30,7 @@ class GameRepository {
             .toList(),
       }).toList();
     } catch (e) {
-      print("Trivia API Error: $e");
+      debugPrint("Trivia API Error: $e");
       questions = GameUtils.getFallbackQuestions();
     }
 
@@ -174,6 +175,38 @@ class GameRepository {
 
       claimed.add(userId);
       transaction.update(roomRef, {'claimedRewards': claimed});
+    });
+  }
+
+  // Send a quick emoji to the opponent
+  Future<void> sendEmoji(String roomId, int playerNumber, String emoji) async {
+    await _db.collection('gameRooms').doc(roomId).update({
+      'player${playerNumber}Emoji': emoji,
+    });
+    
+    // Clear the emoji after 3 seconds on the server so it doesn't stay forever
+    // (In a real app, you might use a more complex message system, but this works for simple reacts)
+    Future.delayed(const Duration(seconds: 3), () async {
+      await _db.collection('gameRooms').doc(roomId).update({
+        'player${playerNumber}Emoji': FieldValue.delete(),
+      });
+    });
+  }
+
+  // Deduct a power-up from the user's profile
+  Future<void> usePowerUp(String uid, String powerUpType) async {
+    final userRef = _db.collection('users').doc(uid);
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      if (!snapshot.exists) return;
+      
+      final powerUps = Map<String, int>.from(snapshot.get('powerUps') ?? {});
+      final currentCount = powerUps[powerUpType] ?? 0;
+      
+      if (currentCount > 0) {
+        powerUps[powerUpType] = currentCount - 1;
+        transaction.update(userRef, {'powerUps': powerUps});
+      }
     });
   }
 }

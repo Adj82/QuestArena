@@ -6,15 +6,78 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
+import '../../../core/constants/avatars.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/auth_providers.dart';
+import '../../../providers/achievement_providers.dart';
+import '../../../data/models/achievement_model.dart';
 import '../../../core/errors/result.dart';
+import '../../widgets/animated_coin_counter.dart';
 
-class ProfileTab extends ConsumerWidget {
+class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<ProfileTab> createState() => _ProfileTabState();
+}
+
+class _ProfileTabState extends ConsumerState<ProfileTab> {
+  Future<void> _changeAvatar(String uid) async {
+    final selectedAvatar = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: AppColors.cardBg,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(32))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('SELECT NEW AVATAR', style: AppTextStyles.label.copyWith(color: AppColors.gold)),
+            const SizedBox(height: 24),
+            Flexible(
+              child: GridView.builder(
+                shrinkWrap: true,
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 16,
+                  mainAxisSpacing: 16,
+                ),
+                itemCount: AppAvatars.avatars.length,
+                itemBuilder: (context, index) {
+                  final avatarUrl = AppAvatars.avatars[index];
+                  return GestureDetector(
+                    onTap: () => Navigator.pop(context, avatarUrl),
+                    child: CircleAvatar(
+                      radius: 40,
+                      backgroundColor: AppColors.surface,
+                      child: ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: avatarUrl,
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
+                          errorWidget: (context, url, error) => const Icon(Icons.person),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (selectedAvatar != null && mounted) {
+      await ref.read(userRepositoryProvider).updateAvatarUrl(uid, selectedAvatar);
+      ref.invalidate(currentUserProvider);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
 
     return userAsync.when(
@@ -23,13 +86,7 @@ class ProfileTab extends ConsumerWidget {
       data: (user) {
         if (user == null) return const Center(child: Text('User not found'));
 
-        // List of all possible achievements to show "Locked" ones
-        final allAchievements = [
-          {'id': 'first_win', 'name': 'First Blood', 'desc': 'Win your first match', 'icon': Icons.flash_on_rounded},
-          {'id': 'on_fire', 'name': 'On Fire', 'desc': 'Win 3 games in a row', 'icon': Icons.whatshot},
-          {'id': 'veteran', 'name': 'Veteran', 'desc': 'Play 100 matches', 'icon': Icons.military_tech},
-          {'id': 'scholar', 'name': 'Scholar', 'desc': 'Get 10/10 in one match', 'icon': Icons.school},
-        ];
+        final achievementsAsync = ref.watch(userAchievementsProvider);
 
         return Scaffold(
           appBar: AppBar(
@@ -48,19 +105,35 @@ class ProfileTab extends ConsumerWidget {
             child: Column(
               children: [
                 // Header
-                CircleAvatar(
-                  radius: 50,
-                  backgroundColor: AppColors.surface,
-                  child: ClipOval(
-                    child: CachedNetworkImage(
-                      imageUrl: user.avatarUrl ?? '',
-                      width: 100,
-                      height: 100,
-                      fit: BoxFit.cover,
-                      placeholder: (context, url) => const CircularProgressIndicator(),
-                      errorWidget: (context, url, error) => const Icon(Icons.person, size: 40),
+                Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 50,
+                      backgroundColor: AppColors.surface,
+                      child: ClipOval(
+                        child: CachedNetworkImage(
+                          imageUrl: user.avatarUrl ?? '',
+                          width: 100,
+                          height: 100,
+                          fit: BoxFit.cover,
+                          placeholder: (context, url) => const CircularProgressIndicator(),
+                          errorWidget: (context, url, error) => const Icon(Icons.person, size: 40),
+                        ),
+                      ),
                     ),
-                  ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: GestureDetector(
+                        onTap: () => _changeAvatar(user.uid),
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(color: AppColors.gold, shape: BoxShape.circle),
+                          child: const Icon(Icons.edit_rounded, size: 16, color: Colors.black),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 16),
                 Text(user.username, style: AppTextStyles.headline),
@@ -68,61 +141,80 @@ class ProfileTab extends ConsumerWidget {
                 
                 const SizedBox(height: 32),
                 
-                // Stats Summary (Added for better visibility)
+                // Stats Summary
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     _ProfileStat(label: 'LEVEL', value: '${user.level}'),
                     _ProfileStat(label: 'WINS', value: '${user.totalWins}'),
-                    _ProfileStat(label: 'COINS', value: '${user.coins}'),
+                    Column(
+                      children: [
+                        AnimatedCoinCounter(
+                          value: user.coins, 
+                          style: AppTextStyles.headline.copyWith(color: AppColors.gold, fontSize: 24),
+                        ),
+                        Text('COINS', style: AppTextStyles.label.copyWith(fontSize: 10)),
+                      ],
+                    ),
                   ],
                 ),
+
+                const SizedBox(height: 32),
+
+                // Streak Stats
+                Container(
+                  padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.surface),
+                  ),
+                  child: Column(
+                    children: [
+                      _StreakRow(
+                        label: 'Login Streak',
+                        value: '${user.loginStreak} Days',
+                        icon: Icons.whatshot_rounded,
+                        color: AppColors.gold,
+                      ),
+                      const Divider(color: AppColors.surface, height: 32),
+                      _StreakRow(
+                        label: 'Current Win Streak',
+                        value: '${user.currentWinStreak} Wins',
+                        icon: Icons.auto_awesome_rounded,
+                        color: AppColors.teal,
+                      ),
+                      const Divider(color: AppColors.surface, height: 32),
+                      _StreakRow(
+                        label: 'Highest Win Streak',
+                        value: '${user.highestWinStreak} Wins',
+                        icon: Icons.emoji_events_rounded,
+                        color: AppColors.purple,
+                      ),
+                    ],
+                  ),
+                ),
+
+                const SizedBox(height: 32),
 
                 const SizedBox(height: 40),
                 
                 // Achievement Grid
                 Text('ACHIEVEMENTS', style: AppTextStyles.label),
                 const SizedBox(height: 16),
-                GridView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 2,
-                    crossAxisSpacing: 12,
-                    mainAxisSpacing: 12,
-                    childAspectRatio: 1.5,
+                achievementsAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, s) => Text('Error: $e'),
+                  data: (achievements) => ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: achievements.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final ach = achievements[index];
+                      return _AchievementTile(achievement: ach);
+                    },
                   ),
-                  itemCount: allAchievements.length,
-                  itemBuilder: (context, index) {
-                    final achievement = allAchievements[index];
-                    final isUnlocked = user.achievements.contains(achievement['id']);
-                    
-                    return Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isUnlocked ? AppColors.cardBg : AppColors.cardBg.withOpacity(0.3),
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: isUnlocked ? AppColors.gold : AppColors.surface),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            achievement['icon'] as IconData, 
-                            color: isUnlocked ? AppColors.gold : AppColors.textMuted,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            achievement['name'] as String, 
-                            style: AppTextStyles.bodyMd.copyWith(
-                              fontSize: 14,
-                              color: isUnlocked ? AppColors.textPrimary : AppColors.textMuted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  },
                 ),
 
                 const SizedBox(height: 48),
@@ -170,13 +262,15 @@ class ProfileTab extends ConsumerWidget {
               // 2. Delete Auth account
               final result = await ref.read(authRepositoryProvider).deleteAccount();
               
-              if (context.mounted && result is Failure) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text((result as Failure).error.message),
-                    backgroundColor: AppColors.red,
-                  ),
-                );
+              if (context.mounted) {
+                if (result case Failure(error: final e)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.message),
+                      backgroundColor: AppColors.red,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
@@ -185,6 +279,98 @@ class ProfileTab extends ConsumerWidget {
         ],
       ),
     );
+  }
+}
+
+class _AchievementTile extends StatelessWidget {
+  final Achievement achievement;
+  const _AchievementTile({required this.achievement});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isUnlocked = achievement.isUnlocked;
+    final double progressPercent = (achievement.progress / achievement.target).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUnlocked ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isUnlocked ? AppColors.gold : AppColors.surface, width: isUnlocked ? 2 : 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isUnlocked ? AppColors.gold.withValues(alpha: 0.1) : AppColors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _getIcon(achievement.type),
+              color: isUnlocked ? AppColors.gold : AppColors.textMuted,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  achievement.title,
+                  style: AppTextStyles.bodyMd.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isUnlocked ? Colors.white : AppColors.textMuted,
+                  ),
+                ),
+                Text(
+                  achievement.description,
+                  style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progressPercent,
+                    backgroundColor: AppColors.surface,
+                    color: isUnlocked ? AppColors.gold : AppColors.purple,
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${achievement.progress}/${achievement.target}',
+                      style: AppTextStyles.label.copyWith(fontSize: 9),
+                    ),
+                    Text(
+                      'REWARD: ${achievement.rewardCoins} C',
+                      style: AppTextStyles.label.copyWith(
+                        fontSize: 9, 
+                        color: isUnlocked ? AppColors.gold : AppColors.textMuted,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getIcon(AchievementType type) {
+    switch (type) {
+      case AchievementType.matchesPlayed: return Icons.sports_esports_rounded;
+      case AchievementType.matchesWon: return Icons.emoji_events_rounded;
+      case AchievementType.questionsCorrect: return Icons.psychology_rounded;
+      case AchievementType.perfectScores: return Icons.star_rounded;
+    }
   }
 }
 
@@ -199,6 +385,41 @@ class _ProfileStat extends StatelessWidget {
       children: [
         Text(value, style: AppTextStyles.headline.copyWith(color: AppColors.gold, fontSize: 24)),
         Text(label, style: AppTextStyles.label.copyWith(fontSize: 10)),
+      ],
+    );
+  }
+}
+
+class _StreakRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color color;
+
+  const _StreakRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(label, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
+        ),
+        Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18, color: color)),
       ],
     );
   }

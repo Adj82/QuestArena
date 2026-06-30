@@ -59,6 +59,17 @@ class UserRepository {
     await FirebaseFirestore.instance.collection('users').doc(uid).delete();
   }
 
+  Future<Result<void>> updateAvatarUrl(String uid, String url) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'avatarUrl': url,
+      });
+      return const Success(null);
+    } catch (e) {
+      return Failure(DatabaseError(e.toString()));
+    }
+  }
+
   Future<void> updateUserStats({
     required String uid,
     required int xpGained,

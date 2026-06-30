@@ -12,6 +12,8 @@ class GameRoomModel {
   final DateTime? questionDeadline;
   final String? winnerId;
   final List<String> claimedRewards;
+  final String? player1Emoji;
+  final String? player2Emoji;
 
   GameRoomModel({
     required this.roomId,
@@ -24,6 +26,8 @@ class GameRoomModel {
     this.questionDeadline,
     this.winnerId,
     this.claimedRewards = const [],
+    this.player1Emoji,
+    this.player2Emoji,
   });
 
   factory GameRoomModel.fromJson(Map<String, dynamic> json) {
@@ -40,6 +44,8 @@ class GameRoomModel {
           : null,
       winnerId: json['winnerId'],
       claimedRewards: List<String>.from(json['claimedRewards'] ?? []),
+      player1Emoji: json['player1Emoji'],
+      player2Emoji: json['player2Emoji'],
     );
   }
 
@@ -54,5 +60,7 @@ class GameRoomModel {
     'questionDeadline': questionDeadline?.toIso8601String(),
     'winnerId': winnerId,
     'claimedRewards': claimedRewards,
+    'player1Emoji': player1Emoji,
+    'player2Emoji': player2Emoji,
   };
 }
