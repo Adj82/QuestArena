@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/errors/result.dart';
 import '../models/user_model.dart';
@@ -79,10 +78,10 @@ class UserRepository {
     required String uid,
     required bool isWin,
     bool isDraw = false,
-    bool isArenaBreakerWin = false,
     required int correctAnswers,
     required int totalQuestions,
     required int coinsGained,
+    bool isArenaBreakerWin = false,
   }) async {
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     MatchEndResult? result;
@@ -121,8 +120,8 @@ class UserRepository {
           ? DateTime.now() 
           : user.lastDailyBonusDate;
 
-      // Achievements
-      final achievements = List<String>.from(user.achievements);
+      // Achievements Logic
+      final achievements = List<String>.from(userData['achievements'] ?? []);
       if (isWin && !achievements.contains('first_win')) {
         achievements.add('first_win');
       }
@@ -131,11 +130,17 @@ class UserRepository {
         achievements.add('veteran');
       }
 
-      final abWins = user.arenaBreakerWins + (isArenaBreakerWin && isWin ? 1 : 0);
-      final abLosses = user.arenaBreakerLosses + (isArenaBreakerWin && !isWin && !isDraw ? 1 : 0);
-
-      if (isArenaBreakerWin && isWin && !achievements.contains('arena_breaker')) {
-        achievements.add('arena_breaker');
+      int abWins = user.arenaBreakerWins;
+      int abLosses = user.arenaBreakerLosses;
+      if (isArenaBreakerWin) {
+        if (isWin) {
+          abWins++;
+          if (!achievements.contains('arena_breaker')) {
+            achievements.add('arena_breaker');
+          }
+        } else {
+          abLosses++;
+        }
       }
 
       transaction.update(userRef, {
@@ -172,6 +177,7 @@ class UserRepository {
     required int xpGained,
     required int coinsGained,
     required bool isWin,
+    bool isArenaBreakerWin = false,
   }) async {
     await processMatchEnd(
       uid: uid,
@@ -180,6 +186,7 @@ class UserRepository {
       correctAnswers: 0,
       totalQuestions: 0,
       coinsGained: coinsGained,
+      isArenaBreakerWin: isArenaBreakerWin,
     );
   }
 

@@ -121,6 +121,7 @@ class UserModel {
     int? arenaBreakerWins,
     int? arenaBreakerLosses,
     double? averageAccuracy,
+    bool clearSubRank = false,
   }) {
     return UserModel(
       uid: uid,
@@ -131,7 +132,7 @@ class UserModel {
       xp: xp ?? this.xp,
       coins: coins ?? this.coins,
       rank: rank ?? this.rank,
-      subRank: subRank ?? this.subRank,
+      subRank: clearSubRank ? null : (subRank ?? this.subRank),
       rankPoints: rankPoints ?? this.rankPoints,
       wins: wins ?? this.wins,
       losses: losses ?? this.losses,
