@@ -33,6 +33,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
   List<String> _fiftyFiftyHiddenOptions = [];
   int _lastQuestionIndex = -1;
   bool _hasUsedFiftyFifty = false;
+  bool _isRevealingTimeoutAnswer = false;
+  int? _timeoutRevealQuestionIndex;
 
   // Heartbeat & Timer state
   Timer? _heartbeatTimer;
@@ -101,8 +103,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
           _timerController.stop();
           _handleTimeout();
         }
-        // Force server to move to next Q if it hasn't yet (Driver role)
-        if (room.status == 'active') {
+        // After the reveal window, force server to move to next Q if it hasn't yet.
+        if (room.status == 'active' && !_isRevealingTimeoutAnswer) {
           ref.read(gameRepositoryProvider).forceAdvanceQuestion(widget.roomId, room.currentQuestionIndex);
         }
       } else {
@@ -120,7 +122,46 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   void _handleTimeout() async {
     if (_hasAnswered) return;
-    _onAnswerSelected("TIMEOUT");
+
+    final room = ref.read(gameRoomProvider(widget.roomId)).value;
+    if (room == null) return;
+
+    final timedOutIndex = room.currentQuestionIndex;
+
+    setState(() {
+      _selectedAnswer = "TIMEOUT";
+      _hasAnswered = true;
+      _isRevealingTimeoutAnswer = true;
+      _timeoutRevealQuestionIndex = timedOutIndex;
+    });
+
+    await Future.delayed(const Duration(seconds: 2));
+    if (!mounted) return;
+
+    final latestRoom = ref.read(gameRoomProvider(widget.roomId)).value;
+    if (latestRoom == null ||
+        latestRoom.status != 'active' ||
+        latestRoom.currentQuestionIndex != timedOutIndex) {
+      setState(() {
+        _isRevealingTimeoutAnswer = false;
+        _timeoutRevealQuestionIndex = null;
+      });
+      return;
+    }
+
+    await _submitAnswer("TIMEOUT");
+    if (!mounted) return;
+
+    await ref
+        .read(gameRepositoryProvider)
+        .forceAdvanceQuestion(widget.roomId, timedOutIndex);
+
+    if (mounted) {
+      setState(() {
+        _isRevealingTimeoutAnswer = false;
+        _timeoutRevealQuestionIndex = null;
+      });
+    }
   }
 
   void _onAnswerSelected(String answer) async {
@@ -132,6 +173,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
     });
     _timerController.stop();
 
+    await _submitAnswer(answer);
+  }
+
+  Future<void> _submitAnswer(String answer) async {
     final room = ref.read(gameRoomProvider(widget.roomId)).value;
     final user = ref.read(currentUserProvider).value;
     if (room == null || user == null) return;
@@ -215,6 +260,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
           _hasAnswered = false;
           _selectedAnswer = null;
           _fiftyFiftyHiddenOptions = [];
+          _isRevealingTimeoutAnswer = false;
+          _timeoutRevealQuestionIndex = null;
         });
         _syncState(); // Immediate sync for new Q
       }
@@ -315,6 +362,16 @@ class _GameScreenState extends ConsumerState<GameScreen>
                 onTap: () => _onAnswerSelected(opt),
               ),
             )),
+            if (_isRevealingTimeoutAnswer &&
+                _timeoutRevealQuestionIndex == room.currentQuestionIndex)
+              Padding(
+                padding: const EdgeInsets.only(top: 8),
+                child: Text(
+                  'Time up! Correct answer revealed.',
+                  style: AppTextStyles.label.copyWith(color: AppColors.gold),
+                  textAlign: TextAlign.center,
+                ).animate().fadeIn().shake(hz: 2),
+              ),
           ],
         ),
       ),
