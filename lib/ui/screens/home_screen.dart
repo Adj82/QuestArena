@@ -1,10 +1,20 @@
+// WHAT THIS FILE DOES:
+// Main navigation hub with automatic daily reward logic.
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/constants/colors.dart';
+import '../../providers/user_providers.dart';
+import '../../providers/streak_providers.dart';
+import '../../providers/achievement_providers.dart';
+import '../../providers/avatar_providers.dart';
+import '../../core/errors/result.dart';
 import 'tabs/dashboard_tab.dart';
 import 'tabs/battle_tab.dart';
 import 'tabs/leaderboard_tab.dart';
 import 'tabs/profile_tab.dart';
+import '../widgets/streak_reward_popup.dart';
+import '../widgets/achievement_popup.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -15,6 +25,8 @@ class HomeScreen extends ConsumerStatefulWidget {
 
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _selectedIndex = 0;
+  bool _checkedDailyReward = false;
+  bool _syncedRetroactive = false;
 
   final List<Widget> _tabs = [
     const DashboardTab(),
@@ -24,7 +36,90 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkDailyReward();
+      _syncRetroactiveData();
+    });
+  }
+
+  void _syncRetroactiveData() async {
+    if (_syncedRetroactive) return;
+    
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
+
+    _syncedRetroactive = true;
+
+    // 1. Sync Achievements (Retroactive)
+    await ref.read(achievementServiceProvider).syncAll(user);
+
+    // 2. Sync Avatars (Retroactive based on Rank)
+    await ref.read(avatarServiceProvider).checkAndUnlockLeagues(user.uid, user.rank);
+  }
+
+  void _checkDailyReward() async {
+    if (_checkedDailyReward) return;
+
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
+
+    _checkedDailyReward = true;
+
+    // Check Login Streak
+    final streakService = ref.read(streakServiceProvider);
+    final streakResult = await streakService.checkAndUpdateLoginStreak(user);
+
+    if (streakResult is Success<int>) {
+       // Trigger achievement check
+       ref.read(achievementServiceProvider).updateLoginStreakProgress(user.uid, streakResult.data);
+       
+       if (mounted && streakResult.data > 0) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => StreakRewardPopup(
+            title: '7-DAY STREAK',
+            message: 'Consistency is key! 🔥',
+            reward: streakResult.data,
+            icon: Icons.whatshot_rounded,
+            color: AppColors.gold,
+            onClaim: () => Navigator.pop(context),
+          ),
+        );
+        return;
+      }
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    // Listen for achievements
+    ref.listen(lastUnlockedAchievementProvider, (previous, next) {
+      if (next != null) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AchievementPopup(
+            achievement: next,
+            onDismiss: () {
+              Navigator.pop(context);
+              ref.read(lastUnlockedAchievementProvider.notifier).state = null;
+            },
+          ),
+        );
+      }
+    });
+
+    // Listen for user data to trigger daily reward check once loaded
+    ref.listen(currentUserProvider, (previous, next) {
+      if (next.value != null) {
+        if (!_checkedDailyReward) _checkDailyReward();
+        if (!_syncedRetroactive) _syncRetroactiveData();
+      }
+    });
+
     return Scaffold(
       body: _tabs[_selectedIndex],
       bottomNavigationBar: Container(
@@ -51,7 +146,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   NavigationDestination _buildNavItem(int index, IconData activeIcon, IconData icon, String label) {
-    final isSelected = _selectedIndex == index;
     return NavigationDestination(
       icon: Icon(icon, color: AppColors.textMuted),
       selectedIcon: Icon(activeIcon, color: AppColors.neonCyan),

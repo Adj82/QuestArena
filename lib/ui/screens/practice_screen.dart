@@ -48,17 +48,21 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> with SingleTick
     setState(() => _isLoading = true);
     try {
       final questions = await ref.read(gameRepositoryProvider).fetchQuestions(10);
-      setState(() {
-        _questions = questions;
-        _hasStarted = true;
-        _isLoading = false;
-      });
-      _nextQuestion();
+      if (mounted) {
+        setState(() {
+          _questions = questions;
+          _hasStarted = true;
+          _isLoading = false;
+        });
+        _nextQuestion();
+      }
     } catch (e) {
-      setState(() => _isLoading = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to load questions: $e')),
-      );
+      if (mounted) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load questions: $e')),
+        );
+      }
     }
   }
 
@@ -201,7 +205,7 @@ class _PracticeScreenState extends ConsumerState<PracticeScreen> with SingleTick
                       },
                       child: Text(
                         'BACK TO HUB', 
-                        style: AppTextStyles.label.copyWith(color: Colors.white.withOpacity(0.7)),
+                        style: AppTextStyles.label.copyWith(color: Colors.white.withValues(alpha: 0.7)),
                       ),
                     ),
                   ),

@@ -1,8 +1,9 @@
 // WHAT THIS FILE DOES:
-// Optimized core quiz screen. 
-// Features: Heartbeat, Robust Reconnect, Independent Match Progression.
+// Optimized core quiz screen.
+// Features: Heartbeat, Robust Reconnect, Independent Match Progression, Power-ups & Emojis.
 
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -31,8 +32,13 @@ class _GameScreenState extends ConsumerState<GameScreen>
   String? _selectedAnswer;
   bool _hasAnswered = false;
   List<String> _shuffledOptions = [];
-  List<String> _hiddenOptions = [];
+  final List<String> _hiddenOptions = [];
   int _lastQuestionIndex = -1;
+
+  // Power-up & Lifeline state
+  bool _isTimeFrozen = false;
+  bool _usedFiftyFiftyInMatch = false;
+  bool _usedTimeFreezeInMatch = false;
   bool _hasUsedOneOptionLifeline = false;
   bool _hasUsedTwoOptionLifeline = false;
 
@@ -92,7 +98,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
     final room = ref.read(gameRoomProvider(widget.roomId)).value;
     if (room == null || (room.status != 'active' && room.status != 'arena_breaker')) return;
 
-    if (room.questionStartedAt != null) {
+    if (room.questionStartedAt != null && !_isTimeFrozen) {
       final now = DateTime.now();
       final elapsedMs = now.difference(room.questionStartedAt!).inMilliseconds;
       final remainingMs = 15000 - elapsedMs;
@@ -139,41 +145,40 @@ class _GameScreenState extends ConsumerState<GameScreen>
     if (room == null || user == null) return;
 
     final isP1 = user.uid == room.player1['uid'];
-    final question = room.questions[room.currentQuestionIndex];
+    final question = room.status == 'arena_breaker' 
+        ? room.arenaBreakerQuestion 
+        : (room.currentQuestionIndex < room.questions.length ? room.questions[room.currentQuestionIndex] : null);
+    
+    if (question == null) return;
+    
     final isCorrect = answer == question['correct_answer'];
 
-    int score = 0;
-    if (isCorrect) {
-      // Calculate score based on remaining time
-      final remainingRatio = _timerController.value;
-      score = 10 + (remainingRatio * 5).toInt();
-    }
+    if (room.status == 'arena_breaker') {
+      await ref.read(gameRepositoryProvider).submitArenaBreakerAnswer(
+            roomId: widget.roomId,
+            userId: user.uid,
+            answer: answer,
+          );
+    } else {
+      int score = 0;
+      if (isCorrect) {
+        // Calculate score based on remaining time
+        final remainingRatio = _timerController.value;
+        score = 10 + (remainingRatio * 5).toInt();
+      }
 
-    await ref.read(gameRepositoryProvider).submitAnswer(
-          roomId: widget.roomId,
-          userId: user.uid,
-          playerNumber: isP1 ? 1 : 2,
-          answer: answer,
-          scoreIncrement: score,
-        );
+      await ref.read(gameRepositoryProvider).submitAnswer(
+            roomId: widget.roomId,
+            userId: user.uid,
+            playerNumber: isP1 ? 1 : 2,
+            answer: answer,
+            scoreIncrement: score,
+          );
+    }
   }
 
   void _handleABAnswerSelection(String answer) async {
-    if (_hasAnswered) return;
-    setState(() {
-      _selectedAnswer = answer;
-      _hasAnswered = true;
-    });
-    _timerController.stop();
-
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return;
-
-    await ref.read(gameRepositoryProvider).submitArenaBreakerAnswer(
-          roomId: widget.roomId,
-          userId: user.uid,
-          answer: answer,
-        );
+    _onAnswerSelected(answer);
   }
 
   void _startForfeitTimer() {
@@ -190,6 +195,97 @@ class _GameScreenState extends ConsumerState<GameScreen>
     });
   }
 
+  void _useFiftyFifty() async {
+    final user = ref.read(currentUserProvider).value;
+    if (user == null || (user.powerUps['fiftyFifty'] ?? 0) <= 0 || _hasAnswered || _usedFiftyFiftyInMatch) return;
+
+    final room = ref.read(gameRoomProvider(widget.roomId)).value;
+    if (room == null) return;
+
+    final question = room.questions[room.currentQuestionIndex];
+    final incorrect = List<String>.from(question['incorrect_answers'])..shuffle();
+    
+    setState(() {
+      _hiddenOptions.addAll(incorrect.take(2).toList());
+      _usedFiftyFiftyInMatch = true;
+    });
+
+    await ref.read(gameRepositoryProvider).usePowerUp(user.uid, 'fiftyFifty');
+  }
+
+  void _useTimeFreeze() async {
+    final user = ref.read(currentUserProvider).value;
+    if (user == null || (user.powerUps['timeFreeze'] ?? 0) <= 0 || _hasAnswered || _usedTimeFreezeInMatch) return;
+
+    setState(() {
+      _isTimeFrozen = true;
+      _usedTimeFreezeInMatch = true;
+    });
+    _timerController.stop();
+
+    await ref.read(gameRepositoryProvider).usePowerUp(user.uid, 'timeFreeze');
+    
+    // Resume after 5 seconds
+    Future.delayed(const Duration(seconds: 5), () {
+      if (mounted && !_hasAnswered && _isTimeFrozen) {
+        setState(() => _isTimeFrozen = false);
+        _timerController.reverse(from: _timerController.value);
+      }
+    });
+  }
+
+  void _useLifeline(GameRoomModel room, String type) async {
+    if (_hasAnswered) return;
+    if (type == 'oneOption' && _hasUsedOneOptionLifeline) return;
+    if (type == 'twoOption' && _hasUsedTwoOptionLifeline) return;
+
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
+
+    final count = type == 'oneOption' ? user.oneOptionLifelines : user.twoOptionLifelines;
+    if (count <= 0) return;
+
+    try {
+      await ref.read(gameRepositoryProvider).useLifeline(
+            userId: user.uid,
+            lifelineType: type,
+          );
+
+      final question = room.questions[room.currentQuestionIndex];
+      final availableWrong = _shuffledOptions
+          .where((o) => o != question['correct_answer'] && !_hiddenOptions.contains(o))
+          .toList()
+        ..shuffle();
+
+      setState(() {
+        if (type == 'oneOption') {
+          _hasUsedOneOptionLifeline = true;
+          if (availableWrong.isNotEmpty) {
+            _hiddenOptions.add(availableWrong.first);
+          }
+        } else {
+          _hasUsedTwoOptionLifeline = true;
+          _hiddenOptions.addAll(availableWrong.take(2));
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error using lifeline: $e')),
+        );
+      }
+    }
+  }
+
+  void _sendEmoji(String emoji) async {
+    final user = ref.read(currentUserProvider).value;
+    final room = ref.read(gameRoomProvider(widget.roomId)).value;
+    if (user == null || room == null) return;
+    
+    final isP1 = user.uid == room.player1['uid'];
+    await ref.read(gameRepositoryProvider).sendEmoji(widget.roomId, isP1 ? 1 : 2, emoji);
+  }
+
   @override
   Widget build(BuildContext context) {
     final user = ref.watch(currentUserProvider).value;
@@ -203,9 +299,11 @@ class _GameScreenState extends ConsumerState<GameScreen>
         _heartbeatTimer?.cancel();
         _syncTimer?.cancel();
         _forfeitTimer?.cancel();
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => ResultScreen(room: room)),
-        );
+        if (context.mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => ResultScreen(room: room)),
+          );
+        }
         return;
       }
 
@@ -216,7 +314,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
         setState(() {
           _hasAnswered = false;
           _selectedAnswer = null;
-          _hiddenOptions = [];
+          _hiddenOptions.clear();
+          _isTimeFrozen = false;
           _hasUsedOneOptionLifeline = false;
           _hasUsedTwoOptionLifeline = false;
         });
@@ -230,17 +329,26 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
       if (opponentId != null && (room.status == 'active' || room.status == 'arena_breaker')) {
         final presence = room.presence[opponentId];
-        final lastSeen = presence?['lastSeen'] as DateTime?;
-        final isOnline = presence?['isOnline'] ?? true;
-        
-        bool disconnected = !isOnline || (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds > 15);
+        if (presence != null) {
+          final lastSeenTimestamp = presence['lastSeen'];
+          DateTime? lastSeen;
+          if (lastSeenTimestamp is Timestamp) {
+            lastSeen = lastSeenTimestamp.toDate();
+          } else if (lastSeenTimestamp is DateTime) {
+            lastSeen = lastSeenTimestamp;
+          }
 
-        if (disconnected && !_isOpponentDisconnected) {
-          setState(() => _isOpponentDisconnected = true);
-          _startForfeitTimer();
-        } else if (!disconnected && _isOpponentDisconnected) {
-          setState(() => _isOpponentDisconnected = false);
-          _forfeitTimer?.cancel();
+          final isOnline = presence['isOnline'] ?? true;
+          
+          bool disconnected = !isOnline || (lastSeen != null && DateTime.now().difference(lastSeen).inSeconds > 15);
+
+          if (disconnected && !_isOpponentDisconnected) {
+            setState(() => _isOpponentDisconnected = true);
+            _startForfeitTimer();
+          } else if (!disconnected && _isOpponentDisconnected) {
+            setState(() => _isOpponentDisconnected = false);
+            _forfeitTimer?.cancel();
+          }
         }
       }
     });
@@ -261,12 +369,19 @@ class _GameScreenState extends ConsumerState<GameScreen>
             ? Text('OPPONENT DISCONNECTED', style: AppTextStyles.label.copyWith(color: AppColors.red, fontSize: 10))
             : null,
           centerTitle: true,
+          actions: [
+            _EmojiPickerButton(onEmojiSelected: _sendEmoji),
+          ],
         ),
         body: roomAsync.when(
           loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
           error: (e, s) => Center(child: Text('Error: $e')),
           data: (room) {
             if (room == null) return const Center(child: Text('Room Error'));
+            
+            final isP1 = user.uid == room.player1['uid'];
+            final opponentEmoji = isP1 ? room.player2Emoji : room.player1Emoji;
+
             return NeonSwirlBackground(
               colors: room.status == 'arena_breaker' 
                   ? const [AppColors.red, AppColors.neonViolet]
@@ -275,6 +390,17 @@ class _GameScreenState extends ConsumerState<GameScreen>
                 children: [
                   _buildMainUI(room),
                   if (_isOpponentDisconnected) _buildDisconnectBanner(),
+                  // Floating Opponent Emoji
+                  if (opponentEmoji != null)
+                    Positioned(
+                      top: 100,
+                      right: isP1 ? 24 : null,
+                      left: !isP1 ? 24 : null,
+                      child: Text(opponentEmoji, style: const TextStyle(fontSize: 40))
+                          .animate()
+                          .slideY(begin: 1, end: -2, duration: 2.seconds)
+                          .fadeOut(delay: 1500.ms),
+                    ),
                 ],
               ),
             );
@@ -282,6 +408,18 @@ class _GameScreenState extends ConsumerState<GameScreen>
         ),
       ),
     );
+  }
+
+  void _prepareOptions(GameRoomModel room) {
+    if (room.status == 'arena_breaker') {
+      final question = room.arenaBreakerQuestion;
+      if (question != null) {
+        _shuffledOptions = List<String>.from(question['incorrect_answers'])..add(question['correct_answer'])..shuffle();
+      }
+    } else if (room.currentQuestionIndex >= 0 && room.currentQuestionIndex < room.questions.length) {
+      final question = room.questions[room.currentQuestionIndex];
+      _shuffledOptions = List<String>.from(question['incorrect_answers'])..add(question['correct_answer'])..shuffle();
+    }
   }
 
   Widget _buildMainUI(GameRoomModel room) {
@@ -338,7 +476,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
           name: myData?['username'] ?? 'Me', 
           avatarUrl: myData?['avatarUrl'],
           score: myData?['score'] ?? 0, 
-          isLeft: true
+          isLeft: true,
+          hasAnswered: isP1 ? (room.player1['answers'] as List).length > room.currentQuestionIndex : (room.player2?['answers'] as List? ?? []).length > room.currentQuestionIndex,
         ),
         const Spacer(),
         Container(
@@ -355,7 +494,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
           name: opData?['username'] ?? '...', 
           avatarUrl: opData?['avatarUrl'],
           score: opData?['score'] ?? 0, 
-          isLeft: false
+          isLeft: false,
+          hasAnswered: !isP1 ? (room.player1['answers'] as List).length > room.currentQuestionIndex : (room.player2?['answers'] as List? ?? []).length > room.currentQuestionIndex,
         ),
       ],
     );
@@ -365,11 +505,19 @@ class _GameScreenState extends ConsumerState<GameScreen>
     return RepaintBoundary(
       child: AnimatedBuilder(
         animation: _timerController,
-        builder: (_, __) => LinearProgressIndicator(
-          value: _timerController.value,
-          backgroundColor: AppColors.surface,
-          color: _timerController.value < 0.3 ? AppColors.red : AppColors.gold,
-          minHeight: 10,
+        builder: (_, __) => Column(
+          children: [
+            LinearProgressIndicator(
+              value: _timerController.value,
+              backgroundColor: AppColors.surface,
+              color: _isTimeFrozen 
+                  ? Colors.blueAccent 
+                  : (_timerController.value < 0.3 ? AppColors.red : AppColors.gold),
+              minHeight: 10,
+            ),
+            if (_isTimeFrozen)
+              Text('TIME FROZEN!', style: AppTextStyles.label.copyWith(color: Colors.blueAccent, fontSize: 10)),
+          ],
         ),
       ),
     );
@@ -377,27 +525,46 @@ class _GameScreenState extends ConsumerState<GameScreen>
 
   Widget _buildPowerups(GameRoomModel room) {
     final user = ref.read(currentUserProvider).value;
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        LifelineButton(
-          label: 'Remove 1',
-          icon: Icons.exposure_minus_1,
-          count: user?.oneOptionLifelines ?? 0,
-          isUsed: _hasUsedOneOptionLifeline,
-          isDisabled: _hasAnswered,
-          onTap: () => _useLifeline(room, 'oneOption'),
-        ),
-        const SizedBox(width: 12),
-        LifelineButton(
-          label: 'Remove 2',
-          icon: Icons.exposure_minus_2,
-          count: user?.twoOptionLifelines ?? 0,
-          isUsed: _hasUsedTwoOptionLifeline,
-          isDisabled: _hasAnswered,
-          onTap: () => _useLifeline(room, 'twoOption'),
-        ),
-      ],
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          _PowerUpButton(
+            icon: Icons.auto_awesome_mosaic_rounded, 
+            label: '50/50', 
+            count: user?.powerUps['fiftyFifty'] ?? 0,
+            isUsed: _usedFiftyFiftyInMatch,
+            onTap: _useFiftyFifty,
+          ),
+          const SizedBox(width: 12),
+          _PowerUpButton(
+            icon: Icons.ac_unit_rounded, 
+            label: 'FREEZE', 
+            count: user?.powerUps['timeFreeze'] ?? 0,
+            isUsed: _usedTimeFreezeInMatch,
+            onTap: _useTimeFreeze,
+          ),
+          const SizedBox(width: 12),
+          LifelineButton(
+            label: 'Remove 1',
+            icon: Icons.exposure_minus_1,
+            count: user?.oneOptionLifelines ?? 0,
+            isUsed: _hasUsedOneOptionLifeline,
+            isDisabled: _hasAnswered,
+            onTap: () => _useLifeline(room, 'oneOption'),
+          ),
+          const SizedBox(width: 12),
+          LifelineButton(
+            label: 'Remove 2',
+            icon: Icons.exposure_minus_2,
+            count: user?.twoOptionLifelines ?? 0,
+            isUsed: _hasUsedTwoOptionLifeline,
+            isDisabled: _hasAnswered,
+            onTap: () => _useLifeline(room, 'twoOption'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -442,54 +609,6 @@ class _GameScreenState extends ConsumerState<GameScreen>
           ref.read(gameRepositoryProvider).leaveMatch(widget.roomId, user.uid, opponentId);
         }
       }
-    }
-  }
-
-  void _prepareOptions(GameRoomModel room) {
-    if (room.currentQuestionIndex >= 0 && room.currentQuestionIndex < room.questions.length) {
-      final question = room.questions[room.currentQuestionIndex];
-      _shuffledOptions = List<String>.from(question['incorrect_answers'])..add(question['correct_answer'])..shuffle();
-    }
-  }
-
-  void _useLifeline(GameRoomModel room, String type) async {
-    if (_hasAnswered) return;
-    if (type == 'oneOption' && _hasUsedOneOptionLifeline) return;
-    if (type == 'twoOption' && _hasUsedTwoOptionLifeline) return;
-
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return;
-
-    final count = type == 'oneOption' ? user.oneOptionLifelines : user.twoOptionLifelines;
-    if (count <= 0) return;
-
-    try {
-      await ref.read(gameRepositoryProvider).useLifeline(
-            userId: user.uid,
-            lifelineType: type,
-          );
-
-      final question = room.questions[room.currentQuestionIndex];
-      final availableWrong = _shuffledOptions
-          .where((o) => o != question['correct_answer'] && !_hiddenOptions.contains(o))
-          .toList()
-        ..shuffle();
-
-      setState(() {
-        if (type == 'oneOption') {
-          _hasUsedOneOptionLifeline = true;
-          if (availableWrong.isNotEmpty) {
-            _hiddenOptions.add(availableWrong.first);
-          }
-        } else {
-          _hasUsedTwoOptionLifeline = true;
-          _hiddenOptions.addAll(availableWrong.take(2));
-        }
-      });
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error using lifeline: $e')),
-      );
     }
   }
 
@@ -544,11 +663,90 @@ class _GameScreenState extends ConsumerState<GameScreen>
                 text: GameUtils.decodeHtmlEntities(opt),
                 isSelected: _selectedAnswer == opt,
                 onTap: () => _handleABAnswerSelection(opt),
-                isCorrect: false, isWrong: false,
+                isCorrect: _hasAnswered && opt == question['correct_answer'],
+                isWrong: _hasAnswered && _selectedAnswer == opt && opt != question['correct_answer'],
               ),
             )),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PowerUpButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int count;
+  final bool isUsed;
+  final VoidCallback onTap;
+
+  const _PowerUpButton({
+    required this.icon, 
+    required this.label, 
+    required this.count,
+    required this.isUsed,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final bool canUse = count > 0 && !isUsed;
+    
+    return GestureDetector(
+      onTap: canUse ? onTap : null,
+      child: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: canUse ? AppColors.surface : AppColors.surface.withValues(alpha: 0.3),
+              shape: BoxShape.circle,
+              border: Border.all(color: isUsed ? AppColors.gold : Colors.transparent),
+            ),
+            child: Icon(icon, color: canUse ? Colors.white : Colors.grey, size: 24),
+          ),
+          const SizedBox(height: 4),
+          Text('$label ($count)', style: AppTextStyles.label.copyWith(fontSize: 8, color: canUse ? Colors.white : Colors.grey)),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmojiPickerButton extends StatelessWidget {
+  final Function(String) onEmojiSelected;
+  const _EmojiPickerButton({required this.onEmojiSelected});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () {
+        showModalBottomSheet(
+          context: context,
+          backgroundColor: AppColors.cardBg,
+          builder: (context) => Container(
+            padding: const EdgeInsets.all(24),
+            child: GridView.count(
+              shrinkWrap: true,
+              crossAxisCount: 4,
+              children: ['🔥', '😎', '🤔', '😂', '🤯', '🤫', '🏆', '💩'].map((e) => 
+                GestureDetector(
+                  onTap: () {
+                    onEmojiSelected(e);
+                    Navigator.pop(context);
+                  },
+                  child: Center(child: Text(e, style: const TextStyle(fontSize: 32))),
+                )
+              ).toList(),
+            ),
+          ),
+        );
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: const BoxDecoration(color: AppColors.surface, shape: BoxShape.circle),
+        child: const Icon(Icons.emoji_emotions_outlined, color: Colors.white, size: 24),
       ),
     );
   }
@@ -559,12 +757,14 @@ class _PlayerStat extends StatelessWidget {
   final String? avatarUrl;
   final int score;
   final bool isLeft;
+  final bool hasAnswered;
   
   const _PlayerStat({
     required this.name, 
     this.avatarUrl, 
     required this.score, 
-    required this.isLeft
+    required this.isLeft,
+    required this.hasAnswered,
   });
 
   @override
@@ -583,8 +783,16 @@ class _PlayerStat extends StatelessWidget {
         Column(
           crossAxisAlignment: isLeft ? CrossAxisAlignment.start : CrossAxisAlignment.end,
           children: [
-            Text(name.toUpperCase(), style: AppTextStyles.label.copyWith(fontSize: 9, letterSpacing: 1)),
-            Text('$score', style: AppTextStyles.headline.copyWith(color: AppColors.gold, fontSize: 18, letterSpacing: 0)),
+            Text(name.toUpperCase(), style: AppTextStyles.label.copyWith(
+              fontSize: 9, 
+              letterSpacing: 1,
+              color: hasAnswered ? AppColors.teal : AppColors.textSecondary,
+            )),
+            Text('$score', style: AppTextStyles.headline.copyWith(
+              color: hasAnswered ? AppColors.teal : AppColors.gold, 
+              fontSize: 18, 
+              letterSpacing: 0
+            )),
           ],
         ),
       ],

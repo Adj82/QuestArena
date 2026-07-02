@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
 import '../../../core/utils/rank_system.dart';
 import '../../../providers/user_providers.dart';
+import '../../../providers/coin_providers.dart';
 import '../../widgets/rank_badge.dart';
-import '../../widgets/rank_progress_bar.dart';
 import '../../widgets/xp_progress_bar.dart';
 import '../../widgets/smart_avatar.dart';
 import '../../widgets/neon_swirl_background.dart';
@@ -44,7 +43,7 @@ class _DashboardTabState extends ConsumerState<DashboardTab> with TickerProvider
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
-    final historyAsync = ref.watch(matchHistoryProvider);
+    final coinProgress = ref.watch(dailyCoinLimitProvider);
 
     return userAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
@@ -71,111 +70,28 @@ class _DashboardTabState extends ConsumerState<DashboardTab> with TickerProvider
                       children: [
                         Text(
                           'DASHBOARD',
-                          style: AppTextStyles.headline.copyWith(fontSize: 18),
+                          style: AppTextStyles.headline.copyWith(fontSize: 18, letterSpacing: 2),
                         ),
-                        IconButton(
-                          onPressed: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(builder: (_) => const StoreScreen()),
-                          ),
-                          icon: const Icon(Icons.shopping_bag_rounded, color: AppColors.gold),
-                        ),
+                        _buildActionButtons(context),
                       ],
                     ),
 
                     const SizedBox(height: 24),
 
-                    // PLAYER HEADER CARD
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: AppColors.cardBg.withValues(alpha: 0.8),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: AppColors.surface),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: Column(
-                        children: [
-                          Row(
-                            children: [
-                              Stack(
-                                alignment: Alignment.bottomRight,
-                                children: [
-                                  SmartAvatar(
-                                    avatarUrl: user.avatarUrl,
-                                    size: 70,
-                                    showGlow: true,
-                                  ),
-                                  RankBadge(rank: user.rank, subRank: user.subRank, size: 28),
-                                ],
-                              ),
-                              const SizedBox(width: 16),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      user.username.toUpperCase(),
-                                      style: AppTextStyles.headline.copyWith(
-                                        letterSpacing: 2,
-                                        color: AppColors.textPrimary,
-                                      ),
-                                    ),
-                                    Text(
-                                      RankSystem.getRankName(user.rank, user.subRank),
-                                      style: AppTextStyles.label.copyWith(
-                                        color: RankSystem.getRankColor(user.rank),
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: 1.5,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 12),
-                                    XpProgressBar(totalXp: user.xp),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (user.rank != 'Legend' && user.rank != 'Unranked') ...[
-                            const SizedBox(height: 16),
-                            const Divider(color: AppColors.surface),
-                            const SizedBox(height: 8),
-                            RankProgressBar(rank: user.rank, subRank: user.subRank, points: user.rankPoints),
-                          ],
-                        ],
-                      ),
-                    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0),
+                    // ENHANCED PROFILE HEADER CARD
+                    _buildProfileCard(user),
 
                     const SizedBox(height: 32),
 
-                    Text('QUICK STATS', style: AppTextStyles.label),
-                    const SizedBox(height: 12),
-                    
-                    historyAsync.when(
-                      loading: () => const SizedBox(height: 80, child: Center(child: CircularProgressIndicator())),
-                      error: (e, s) => Text('Error: $e'),
-                      data: (history) {
-                        final wins = history.where((m) => m.playerScore > m.opponentScore).length;
-                        final losses = history.where((m) => m.playerScore < m.opponentScore).length;
-                        final draws = history.where((m) => m.playerScore == m.opponentScore).length;
+                    // Daily Coin Limit Progress
+                    _buildDailyCoinProgress(user, coinProgress),
 
-                        return Row(
-                          children: [
-                            _StatCard(label: 'WINS', value: wins.toString(), color: AppColors.teal, icon: Icons.emoji_events_rounded),
-                            const SizedBox(width: 12),
-                            _StatCard(label: 'LOSSES', value: losses.toString(), color: AppColors.red, icon: Icons.sentiment_very_dissatisfied_rounded),
-                            const SizedBox(width: 12),
-                            _StatCard(label: 'DRAWS', value: draws.toString(), color: AppColors.gold, icon: Icons.handshake_rounded),
-                          ],
-                        );
-                      },
-                    ).animate().fadeIn(delay: 400.ms),
+                    const SizedBox(height: 32),
+
+                    // Quick Stats & Streak
+                    Text('BATTLE STATS', style: AppTextStyles.label),
+                    const SizedBox(height: 12),
+                    _buildStatsRow(user),
                     
                     const SizedBox(height: 32),
                     const _RecentHistorySection(),
@@ -187,6 +103,170 @@ class _DashboardTabState extends ConsumerState<DashboardTab> with TickerProvider
         );
       },
     );
+  }
+
+  Widget _buildActionButtons(BuildContext context) {
+    return Row(
+      children: [
+        IconButton(
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const StoreScreen()),
+          ),
+          icon: const Icon(Icons.shopping_bag_rounded, color: AppColors.gold),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfileCard(dynamic user) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg.withValues(alpha: 0.8),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: AppColors.surface, width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  SmartAvatar(
+                    avatarUrl: user.avatarUrl,
+                    size: 80,
+                    showGlow: true,
+                  ),
+                  RankBadge(rank: user.rank, subRank: user.subRank, size: 30),
+                ],
+              ),
+              const SizedBox(width: 20),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      user.username.toUpperCase(),
+                      style: AppTextStyles.headline.copyWith(
+                        letterSpacing: 2,
+                        color: AppColors.textPrimary,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      RankSystem.getRankName(user.rank, user.subRank),
+                      style: AppTextStyles.label.copyWith(
+                        color: RankSystem.getRankColor(user.rank),
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.5,
+                        fontSize: 12,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    XpProgressBar(totalXp: user.xp),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          const Divider(color: AppColors.surface, height: 1),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildSimpleStat('LEVEL', '${user.level}', AppColors.purple),
+              _buildSimpleStat('COINS', '${user.coins}', AppColors.gold, icon: Icons.monetization_on_rounded),
+              _buildSimpleStat('WINS', '${user.wins}', AppColors.teal),
+            ],
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.1, end: 0);
+  }
+
+  Widget _buildSimpleStat(String label, String value, Color color, {IconData? icon}) {
+    return Column(
+      children: [
+        Row(
+          children: [
+            if (icon != null) Icon(icon, color: color, size: 14),
+            if (icon != null) const SizedBox(width: 4),
+            Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18, color: Colors.white)),
+          ],
+        ),
+        Text(label, style: AppTextStyles.label.copyWith(fontSize: 9, color: AppColors.textSecondary)),
+      ],
+    );
+  }
+
+  Widget _buildDailyCoinProgress(dynamic user, double coinProgress) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: AppColors.cardBg,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: AppColors.surface),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text("Today's Coins", style: AppTextStyles.label),
+              Text(
+                user.todayCoinsEarned >= 500 ? "Limit Reached" : "${user.todayCoinsEarned} / 500",
+                style: AppTextStyles.label.copyWith(
+                  color: user.todayCoinsEarned >= 500 ? AppColors.red : AppColors.gold,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: LinearProgressIndicator(
+              value: coinProgress,
+              backgroundColor: AppColors.surface,
+              color: AppColors.gold,
+              minHeight: 8,
+            ),
+          ),
+        ],
+      ),
+    ).animate().fadeIn(delay: 300.ms);
+  }
+
+  Widget _buildStatsRow(dynamic user) {
+    return Row(
+      children: [
+        _StatCard(
+          label: 'WIN STREAK', 
+          value: '${user.currentWinStreak}', 
+          color: AppColors.teal,
+          icon: Icons.bolt_rounded,
+        ),
+        const SizedBox(width: 16),
+        _StatCard(
+          label: 'LOGIN STREAK', 
+          value: '${user.loginStreak}D', 
+          color: AppColors.gold,
+          icon: Icons.whatshot_rounded,
+        ),
+      ],
+    ).animate().fadeIn(delay: 400.ms);
   }
 }
 
@@ -212,8 +292,8 @@ class _StatCard extends StatelessWidget {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 8),
-            Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18)),
-            Text(label, style: AppTextStyles.label.copyWith(fontSize: 8)),
+            Text(value, style: AppTextStyles.headline.copyWith(fontSize: 20)),
+            Text(label, style: AppTextStyles.label.copyWith(fontSize: 8, color: AppColors.textSecondary)),
           ],
         ),
       ),
@@ -235,7 +315,10 @@ class _RecentHistorySection extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text('RECENT MATCHES', style: AppTextStyles.label),
-            TextButton(onPressed: () {}, child: const Text('View All', style: TextStyle(fontSize: 10))),
+            TextButton(
+              onPressed: () {}, 
+              child: const Text('View All', style: TextStyle(fontSize: 10, color: AppColors.gold)),
+            ),
           ],
         ),
         const SizedBox(height: 12),
@@ -281,7 +364,13 @@ class _RecentHistorySection extends ConsumerWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(match.opponentName, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
-                            Text(isWin ? 'Victory' : (isDraw ? 'Draw' : 'Defeat'), style: AppTextStyles.label.copyWith(fontSize: 10, color: isWin ? AppColors.teal : (isDraw ? AppColors.gold : AppColors.red))),
+                            Text(
+                              isWin ? 'Victory' : (isDraw ? 'Draw' : 'Defeat'), 
+                              style: AppTextStyles.label.copyWith(
+                                fontSize: 10, 
+                                color: isWin ? AppColors.teal : (isDraw ? AppColors.gold : AppColors.red),
+                              ),
+                            ),
                           ],
                         ),
                       ),

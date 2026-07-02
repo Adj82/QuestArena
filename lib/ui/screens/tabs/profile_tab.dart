@@ -1,17 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
-import '../../../core/utils/rank_system.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/auth_providers.dart';
-import '../../../providers/leaderboard_providers.dart';
-import '../../widgets/character_avatar.dart';
-import '../../widgets/xp_progress_bar.dart';
-import '../../widgets/rank_progress_bar.dart';
-import '../../widgets/neon_swirl_background.dart';
-import '../../widgets/smart_avatar.dart';
-import '../character_select_screen.dart';
+import '../../../providers/achievement_providers.dart';
+import '../../../data/models/achievement_model.dart';
+import '../../../core/errors/result.dart';
+import '../../widgets/animated_coin_counter.dart';
+import '../avatar_selection_screen.dart';
 
 class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
@@ -20,107 +19,23 @@ class ProfileTab extends ConsumerStatefulWidget {
   ConsumerState<ProfileTab> createState() => _ProfileTabState();
 }
 
-class _ProfileTabState extends ConsumerState<ProfileTab> with SingleTickerProviderStateMixin {
-  late AnimationController _animationController;
-  late Animation<double> _fadeAnimation;
-  late Animation<Offset> _slideAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 800),
-    );
-
-    _fadeAnimation = CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeIn,
-    );
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.1),
-      end: Offset.zero,
-    ).animate(CurvedAnimation(
-      parent: _animationController,
-      curve: Curves.easeOutCubic,
-    ));
-
-    _animationController.forward();
-  }
-
-  @override
-  void dispose() {
-    _animationController.dispose();
-    super.dispose();
-  }
-
-  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String uid) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: AppColors.bgCard,
-        title: const Text('Delete Account?', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'This action is permanent and will delete all your progress, ranks, and coins.',
-          style: TextStyle(color: AppColors.textSecondary),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CANCEL'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              // Implementation of delete account would go here
-              Navigator.pop(context);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-            child: const Text('DELETE', style: TextStyle(color: Colors.white)),
-          ),
-        ],
-      ),
-    );
-  }
-
+class _ProfileTabState extends ConsumerState<ProfileTab> {
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
-    final weeklyMvp = ref.watch(weeklyMvpProvider);
 
     return userAsync.when(
       loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
       error: (e, s) => Center(child: Text('Error: $e')),
       data: (user) {
-        if (user == null) {
-          return const Center(child: Text('User profile not found.'));
-        }
+        if (user == null) return const Center(child: Text('User not found'));
 
-        final isMvp = weeklyMvp?.uid == user.uid;
-        final winRate = user.matchesPlayed > 0 
-            ? (user.wins / user.matchesPlayed * 100).toStringAsFixed(1)
-            : '0';
-
-        final allAchievements = [
-          {'id': 'first_win', 'name': 'First Blood', 'desc': 'Win your first match', 'icon': Icons.flash_on_rounded},
-          {'id': 'on_fire', 'name': 'On Fire', 'desc': 'Win 3 games in a row', 'icon': Icons.whatshot},
-          {'id': 'veteran', 'name': 'Veteran', 'desc': 'Win 10 matches', 'icon': Icons.military_tech},
-          {'id': 'scholar', 'name': 'Scholar', 'desc': 'Get 10/10 in one match', 'icon': Icons.school},
-        ];
-
-        final character = kCharacters.firstWhere(
-          (c) => c.id == (user.avatarUrl ?? ''),
-          orElse: () => kCharacters.first,
-        );
+        final achievementsAsync = ref.watch(userAchievementsProvider);
 
         return Scaffold(
           backgroundColor: AppColors.bgBase,
           appBar: AppBar(
-            title: const Text('PLAYER PROFILE',
-                style: TextStyle(
-                    letterSpacing: 3,
-                    fontWeight: FontWeight.w800,
-                    fontSize: 18)),
+            title: Text('PLAYER PROFILE', style: AppTextStyles.display.copyWith(fontSize: 18)),
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
@@ -130,232 +45,314 @@ class _ProfileTabState extends ConsumerState<ProfileTab> with SingleTickerProvid
               ),
             ],
           ),
-          body: NeonSwirlBackground(
-            colors: const [AppColors.neonCyan, AppColors.neonViolet],
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SlideTransition(
-                position: _slideAnimation,
-                child: SingleChildScrollView(
+          body: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              children: [
+                // Header / Profile Section
+                Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    // Glow behind avatar
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.gold.withValues(alpha: 0.15),
+                            blurRadius: 40,
+                            spreadRadius: 5,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Hero(
+                      tag: 'selected_avatar',
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.gold, width: 2),
+                        ),
+                        child: SmartAvatar(
+                          avatarUrl: user.avatarUrl,
+                          size: 100,
+                          showBorder: false,
+                        ),
+                      ),
+                    ),
+                  ],
+                ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
+                
+                const SizedBox(height: 16),
+                Text(user.username, style: AppTextStyles.headline),
+                Text(user.rank.toUpperCase(), style: AppTextStyles.label.copyWith(color: AppColors.gold, letterSpacing: 2)),
+
+                const SizedBox(height: 24),
+                
+                // Change Avatar Button
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (_) => const AvatarSelectionScreen())
+                  ),
+                  icon: const Icon(Icons.palette_rounded, size: 18),
+                  label: const Text('CHANGE AVATAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardBg,
+                    foregroundColor: AppColors.gold,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      side: const BorderSide(color: AppColors.surface),
+                    ),
+                  ),
+                ).animate().fadeIn(delay: 200.ms),
+
+                const SizedBox(height: 32),
+
+                // Stats Summary
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _ProfileStat(label: 'LEVEL', value: '${user.level}', color: AppColors.purple, icon: Icons.star_rounded),
+                    _ProfileStat(label: 'WINS', value: '${user.wins}', color: AppColors.teal, icon: Icons.emoji_events_rounded),
+                    Column(
+                      children: [
+                        const Icon(Icons.monetization_on_rounded, color: AppColors.gold, size: 24),
+                        const SizedBox(height: 8),
+                        AnimatedCoinCounter(
+                          value: user.coins,
+                          style: AppTextStyles.headline.copyWith(color: Colors.white, fontSize: 18),
+                        ),
+                        Text('COINS', style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ],
+                ).animate().fadeIn(delay: 400.ms),
+
+                const SizedBox(height: 32),
+
+                // Streak Stats
+                Container(
                   padding: const EdgeInsets.all(24),
+                  decoration: BoxDecoration(
+                    color: AppColors.cardBg,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(color: AppColors.surface),
+                  ),
                   child: Column(
                     children: [
-                      // Header
-                      Stack(
-                        children: [
-                          SmartAvatar(
-                            avatarUrl: user.avatarUrl,
-                            size: 100,
-                            showGlow: true,
-                            showBorder: true,
-                          ),
-                          Positioned(
-                            right: 0,
-                            bottom: 0,
-                            child: GestureDetector(
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => CharacterSelectScreen(
-                                      username: user.username,
-                                      onConfirm: (selected) async {
-                                        await ref
-                                            .read(userRepositoryProvider)
-                                            .updateAvatarUrl(user.uid, selected.id);
-                                        if (context.mounted) Navigator.pop(context);
-                                      },
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  color: AppColors.neonViolet,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppColors.glowViolet,
-                                      blurRadius: 8,
-                                    )
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.edit_rounded,
-                                  size: 18,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                      _StreakRow(
+                        label: 'Login Streak',
+                        value: '${user.loginStreak} Days',
+                        icon: Icons.whatshot_rounded,
+                        color: AppColors.gold,
                       ),
-                      
-                      const SizedBox(height: 16),
-                      Text(user.username, style: AppTextStyles.headline),
-                      Text(
-                        RankSystem.getRankName(user.rank, user.subRank),
-                        style: AppTextStyles.label.copyWith(color: AppColors.gold, fontWeight: FontWeight.bold),
+                      const Divider(color: AppColors.surface, height: 32),
+                      _StreakRow(
+                        label: 'Current Win Streak',
+                        value: '${user.currentWinStreak} Wins',
+                        icon: Icons.auto_awesome_rounded,
+                        color: AppColors.teal,
                       ),
-                      
-                      if (isMvp) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: AppColors.gold.withValues(alpha: 0.15),
-                            borderRadius: BorderRadius.circular(30),
-                            border: Border.all(color: AppColors.gold.withValues(alpha: 0.4), width: 1.5),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              const Icon(Icons.workspace_premium_rounded, color: AppColors.gold, size: 16),
-                              const SizedBox(width: 8),
-                              Text(
-                                'MVP HOLDER', 
-                                style: AppTextStyles.label.copyWith(
-                                  color: AppColors.gold, 
-                                  fontSize: 11, 
-                                  fontWeight: FontWeight.w900,
-                                  letterSpacing: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                      
-                      const SizedBox(height: 32),
-                      
-                      // Main Stats Row
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          _ProfileStat(label: 'XP', value: '${user.xp}', color: AppColors.purple, icon: Icons.stars_rounded),
-                          _ProfileStat(label: 'WINS', value: '${user.wins}', color: AppColors.teal, icon: Icons.emoji_events_rounded),
-                          _ProfileStat(label: 'COINS', value: '${user.coins}', color: AppColors.gold, icon: Icons.monetization_on_rounded),
-                          _ProfileStat(label: 'STREAK', value: '${user.currentWinStreak}', color: AppColors.red, icon: Icons.whatshot_rounded),
-                        ],
+                      const Divider(color: AppColors.surface, height: 32),
+                      _StreakRow(
+                        label: 'Highest Win Streak',
+                        value: '${user.highestWinStreak} Wins',
+                        icon: Icons.emoji_events_rounded,
+                        color: AppColors.purple,
                       ),
-
-                      const SizedBox(height: 40),
-                      
-                      // Progress Bars
-                      XpProgressBar(totalXp: user.xp),
-                      
-                      if (user.rank != 'Legend' && user.rank != 'Unranked') ...[
-                        const SizedBox(height: 24),
-                        RankProgressBar(rank: user.rank, subRank: user.subRank, points: user.rankPoints),
-                      ],
-
-                      const SizedBox(height: 32),
-                      
-                      // Detailed Stats Summary
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.cardBg,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(color: AppColors.surface),
-                        ),
-                        child: Column(
-                          children: [
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                _StatItem(label: 'MATCHES', value: '${user.matchesPlayed}'),
-                                _StatItem(label: 'WIN RATE', value: '$winRate%'),
-                                _StatItem(label: 'LEVEL', value: '${user.level}'),
-                              ],
-                            ),
-                            const Divider(color: AppColors.surface, height: 32),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              children: [
-                                _StatItem(label: 'LOSSES', value: '${user.losses}'),
-                                _StatItem(label: 'DRAWS', value: '${user.draws}'),
-                                _StatItem(label: 'BEST STREAK', value: '${user.highestWinStreak}'),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Achievement Grid
-                      const Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text('ACHIEVEMENTS', style: TextStyle(color: AppColors.textMuted, fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 2)),
-                      ),
-                      const SizedBox(height: 16),
-                      GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: 1.5,
-                        ),
-                        itemCount: allAchievements.length,
-                        itemBuilder: (context, index) {
-                          final achievement = allAchievements[index];
-                          final isUnlocked = user.achievements.contains(achievement['id']);
-
-                          return Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: isUnlocked
-                                  ? AppColors.cardBg
-                                  : AppColors.cardBg.withValues(alpha: 0.3),
-                              borderRadius: BorderRadius.circular(16),
-                              border: Border.all(
-                                  color: isUnlocked ? AppColors.gold.withValues(alpha: 0.5) : AppColors.surface),
-                            ),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  achievement['icon'] as IconData,
-                                  color: isUnlocked ? AppColors.gold : AppColors.textMuted,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  achievement['name'] as String,
-                                  style: AppTextStyles.bodyMd.copyWith(
-                                    fontSize: 14,
-                                    color: isUnlocked ? AppColors.textPrimary : AppColors.textMuted,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 48),
-
-                      TextButton.icon(
-                        onPressed: () => _showDeleteConfirmation(context, ref, user.uid),
-                        icon: const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
-                        label: Text(
-                          'DELETE ACCOUNT',
-                          style: AppTextStyles.label.copyWith(color: AppColors.red, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                      const SizedBox(height: 24),
                     ],
                   ),
+                ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.1, end: 0),
+
+                const SizedBox(height: 40),
+
+                // Achievement Grid
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('ACHIEVEMENTS', style: AppTextStyles.label),
                 ),
-              ),
+                const SizedBox(height: 16),
+                achievementsAsync.when(
+                  loading: () => const Center(child: CircularProgressIndicator()),
+                  error: (e, s) => Text('Error: $e'),
+                  data: (achievements) => ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: achievements.length,
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
+                    itemBuilder: (context, index) {
+                      final ach = achievements[index];
+                      return _AchievementTile(achievement: ach);
+                    },
+                  ),
+                ),
+
+                const SizedBox(height: 48),
+
+                // Delete Account Button
+                TextButton.icon(
+                  onPressed: () => _showDeleteConfirmation(context, ref, user.uid),
+                  icon: const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
+                  label: Text(
+                    'DELETE ACCOUNT',
+                    style: AppTextStyles.label.copyWith(color: AppColors.red, fontWeight: FontWeight.bold),
+                  ),
+                ),
+                const SizedBox(height: 24),
+              ],
             ),
           ),
         );
       },
     );
+  }
+
+  void _showDeleteConfirmation(BuildContext context, WidgetRef ref, String uid) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        title: Text('DELETE ACCOUNT?', style: AppTextStyles.headline.copyWith(color: AppColors.red)),
+        content: Text(
+          'This action is permanent. All your XP, coins, and achievements will be lost forever.',
+          style: AppTextStyles.bodyMd,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text('CANCEL', style: AppTextStyles.label),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(context); // Close dialog
+
+              // 1. Delete Firestore data first
+              await ref.read(userRepositoryProvider).deleteUserProfile(uid);
+
+              // 2. Delete Auth account
+              final result = await ref.read(authRepositoryProvider).deleteAccount();
+
+              if (context.mounted) {
+                if (result case Failure(error: final e)) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(e.message),
+                      backgroundColor: AppColors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
+            child: const Text('DELETE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AchievementTile extends StatelessWidget {
+  final Achievement achievement;
+  const _AchievementTile({required this.achievement});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool isUnlocked = achievement.isUnlocked;
+    final double progressPercent = (achievement.progress / achievement.target).clamp(0.0, 1.0);
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isUnlocked ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: isUnlocked ? AppColors.gold : AppColors.surface, width: isUnlocked ? 2 : 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isUnlocked ? AppColors.gold.withValues(alpha: 0.1) : AppColors.surface,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              _getIcon(achievement.type),
+              color: isUnlocked ? AppColors.gold : AppColors.textMuted,
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  achievement.title,
+                  style: AppTextStyles.bodyMd.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: isUnlocked ? Colors.white : AppColors.textMuted,
+                  ),
+                ),
+                Text(
+                  achievement.description,
+                  style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textMuted),
+                ),
+                const SizedBox(height: 12),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: progressPercent,
+                    backgroundColor: AppColors.surface,
+                    color: isUnlocked ? AppColors.gold : AppColors.purple,
+                    minHeight: 6,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${achievement.progress}/${achievement.target}',
+                      style: AppTextStyles.label.copyWith(fontSize: 9),
+                    ),
+                    Text(
+                      'REWARD: ${achievement.rewardCoins} C',
+                      style: AppTextStyles.label.copyWith(
+                        fontSize: 9,
+                        color: isUnlocked ? AppColors.gold : AppColors.textMuted,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  IconData _getIcon(AchievementType type) {
+    switch (type) {
+      case AchievementType.matchesPlayed:
+        return Icons.sports_esports_rounded;
+      case AchievementType.matchesWon:
+        return Icons.emoji_events_rounded;
+      case AchievementType.questionsCorrect:
+        return Icons.psychology_rounded;
+      case AchievementType.perfectScores:
+        return Icons.star_rounded;
+      case AchievementType.loginStreak:
+        return Icons.whatshot_rounded;
+    }
+    return Icons.help_outline_rounded;
   }
 }
 
@@ -380,19 +377,36 @@ class _ProfileStat extends StatelessWidget {
   }
 }
 
-class _StatItem extends StatelessWidget {
+class _StreakRow extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
+  final Color color;
 
-  const _StatItem({required this.label, required this.value});
+  const _StreakRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    return Row(
       children: [
-        Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18)),
-        const SizedBox(height: 4),
-        Text(label, style: AppTextStyles.label.copyWith(fontSize: 9, color: AppColors.textSecondary)),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Icon(icon, color: color, size: 24),
+        ),
+        const SizedBox(width: 16),
+        Expanded(
+          child: Text(label, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
+        ),
+        Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18, color: color)),
       ],
     );
   }

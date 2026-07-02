@@ -8,7 +8,7 @@ import '../data/repositories/user_repository.dart';
 import 'package:dio/dio.dart';
 import '../data/models/user_model.dart';
 import '../data/models/match_history_model.dart';
-
+import 'package:flutter/foundation.dart';
 
 final dioProvider = Provider((ref) => Dio(BaseOptions(
   connectTimeout: const Duration(seconds: 5),
@@ -28,7 +28,7 @@ final currentUserProvider = StreamProvider.autoDispose<UserModel?>((ref) {
 
   final repo = ref.watch(userRepositoryProvider);
   return repo.watchUserProfile(authState.uid).handleError((error) {
-    print('User Stream Error: $error');
+    debugPrint('User Stream Error: $error');
   });
 });
 

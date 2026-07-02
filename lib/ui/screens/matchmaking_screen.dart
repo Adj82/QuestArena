@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/constants/colors.dart';
-import '../../core/theme/app_theme.dart';
 import '../../providers/matchmaking_providers.dart';
 import '../../providers/user_providers.dart';
 import '../widgets/smart_avatar.dart';

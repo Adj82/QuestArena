@@ -3,6 +3,7 @@
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import '../../core/constants/api_constants.dart';
 import '../../core/models/quiz_category.dart';
 import '../../core/utils/game_utils.dart';
@@ -48,7 +49,7 @@ class GameRepository {
     QuizCategory category,
   ) async {
     final roomId = _db.collection('gameRooms').doc().id;
-    
+
     List<Map<String, dynamic>> questions = [];
     try {
       final response = await _dio.get(ApiConstants.triviaUrlForCategory(category.id));
@@ -60,6 +61,7 @@ class GameRepository {
             .toList(),
       }).toList();
     } catch (e) {
+      debugPrint("Trivia API Error: $e");
       questions = GameUtils.getFallbackQuestions();
     }
 
@@ -94,7 +96,7 @@ class GameRepository {
 
     await doc.reference.update({
       'player2': {...player2Data, 'isReady': false, 'score': 0, 'answers': []},
-      'status': 'active', 
+      'status': 'active',
     });
 
     return doc.id;
@@ -131,7 +133,7 @@ class GameRepository {
     required int scoreIncrement,
   }) async {
     final roomRef = _db.collection('gameRooms').doc(roomId);
-    
+
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(roomRef);
       if (!snapshot.exists) return;
@@ -143,12 +145,12 @@ class GameRepository {
 
       // 1. Update player stats
       final playerAnswers = List<String>.from(data[playerKey]['answers'] ?? []);
-      
+
       // Auto-fill missed questions
       while (playerAnswers.length < currentIdx) {
         playerAnswers.add("TIMEOUT");
       }
-      
+
       if (playerAnswers.length == currentIdx) {
         playerAnswers.add(answer);
         final newScore = (data[playerKey]['score'] ?? 0) + scoreIncrement;
@@ -337,7 +339,8 @@ class GameRepository {
 
   Future<GameRoomModel?> findActiveMatch(String uid) async {
     final tenMinAgo = DateTime.now().subtract(const Duration(minutes: 10));
-    final query = await _db.collection('gameRooms')
+    final query = await _db
+        .collection('gameRooms')
         .where('status', whereIn: ['active', 'arena_breaker'])
         .where('createdAt', isGreaterThan: Timestamp.fromDate(tenMinAgo))
         .get();
@@ -394,14 +397,46 @@ class GameRepository {
     await _db.runTransaction((transaction) async {
       final snapshot = await transaction.get(roomRef);
       if (!snapshot.exists) return;
-      
+
       final data = snapshot.data();
       final claimedList = List<String>.from(data?['claimedRewards'] ?? []);
-      
+
       if (claimedList.contains(userId)) return; // Already claimed
 
       claimedList.add(userId);
       transaction.update(roomRef, {'claimedRewards': claimedList});
+    });
+  }
+
+  // Send a quick emoji to the opponent
+  Future<void> sendEmoji(String roomId, int playerNumber, String emoji) async {
+    await _db.collection('gameRooms').doc(roomId).update({
+      'player${playerNumber}Emoji': emoji,
+    });
+
+    // Clear the emoji after 3 seconds on the server so it doesn't stay forever
+    // (In a real app, you might use a more complex message system, but this works for simple reacts)
+    Future.delayed(const Duration(seconds: 3), () async {
+      await _db.collection('gameRooms').doc(roomId).update({
+        'player${playerNumber}Emoji': FieldValue.delete(),
+      });
+    });
+  }
+
+  // Deduct a power-up from the user's profile
+  Future<void> usePowerUp(String uid, String powerUpType) async {
+    final userRef = _db.collection('users').doc(uid);
+    await _db.runTransaction((transaction) async {
+      final snapshot = await transaction.get(userRef);
+      if (!snapshot.exists) return;
+
+      final powerUps = Map<String, int>.from(snapshot.get('powerUps') ?? {});
+      final currentCount = powerUps[powerUpType] ?? 0;
+
+      if (currentCount > 0) {
+        powerUps[powerUpType] = currentCount - 1;
+        transaction.update(userRef, {'powerUps': powerUps});
+      }
     });
   }
 

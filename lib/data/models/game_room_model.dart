@@ -14,11 +14,13 @@ class GameRoomModel {
   final DateTime? questionStartedAt;
   final String? winnerId;
   final List<String> claimedRewards;
+  final String? player1Emoji;
+  final String? player2Emoji;
   final List<String> rematchRequests;
   final String? nextMatchId;
   final int? categoryId;
   final String categoryName;
-  
+
   // Arena Breaker Fields
   final bool isArenaBreaker;
   final Map<String, dynamic>? arenaBreakerQuestion;
@@ -41,6 +43,8 @@ class GameRoomModel {
     this.questionStartedAt,
     this.winnerId,
     this.claimedRewards = const [],
+    this.player1Emoji,
+    this.player2Emoji,
     this.rematchRequests = const [],
     this.nextMatchId,
     this.categoryId,
@@ -63,13 +67,15 @@ class GameRoomModel {
       player2: json['player2'] != null ? Map<String, dynamic>.from(json['player2']) : null,
       questions: List<dynamic>.from(json['questions'] ?? []),
       currentQuestionIndex: json['currentQuestionIndex'] ?? 0,
-      questionStartedAt: json['questionStartedAt'] != null 
-          ? (json['questionStartedAt'] is Timestamp 
-              ? (json['questionStartedAt'] as Timestamp).toDate() 
+      questionStartedAt: json['questionStartedAt'] != null
+          ? (json['questionStartedAt'] is Timestamp
+              ? (json['questionStartedAt'] as Timestamp).toDate()
               : DateTime.tryParse(json['questionStartedAt'].toString()))
           : null,
       winnerId: json['winnerId'],
       claimedRewards: List<String>.from(json['claimedRewards'] ?? []),
+      player1Emoji: json['player1Emoji'],
+      player2Emoji: json['player2Emoji'],
       rematchRequests: List<String>.from(json['rematchRequests'] ?? []),
       nextMatchId: json['nextMatchId'],
       categoryId: json['categoryId'],
@@ -85,28 +91,30 @@ class GameRoomModel {
   }
 
   Map<String, dynamic> toJson() => {
-    'roomId': roomId,
-    'roomCode': roomCode,
-    'status': status,
-    'player1': player1,
-    'player2': player2,
-    'questions': questions,
-    'currentQuestionIndex': currentQuestionIndex,
-    'questionStartedAt': questionStartedAt != null ? Timestamp.fromDate(questionStartedAt!) : null,
-    'winnerId': winnerId,
-    'claimedRewards': claimedRewards,
-    'rematchRequests': rematchRequests,
-    'nextMatchId': nextMatchId,
-    'categoryId': categoryId,
-    'categoryName': categoryName,
-    'isArenaBreaker': isArenaBreaker,
-    'arenaBreakerQuestion': arenaBreakerQuestion,
-    'arenaBreakerSubmissions': arenaBreakerSubmissions,
-    'isArenaBreakerWin': isArenaBreakerWin,
-    'arenaBreakerStatusMessage': arenaBreakerStatusMessage,
-    'presence': presence,
-    'forfeitWinnerId': forfeitWinnerId,
-  };
+        'roomId': roomId,
+        'roomCode': roomCode,
+        'status': status,
+        'player1': player1,
+        'player2': player2,
+        'questions': questions,
+        'currentQuestionIndex': currentQuestionIndex,
+        'questionStartedAt': questionStartedAt != null ? Timestamp.fromDate(questionStartedAt!) : null,
+        'winnerId': winnerId,
+        'claimedRewards': claimedRewards,
+        'player1Emoji': player1Emoji,
+        'player2Emoji': player2Emoji,
+        'rematchRequests': rematchRequests,
+        'nextMatchId': nextMatchId,
+        'categoryId': categoryId,
+        'categoryName': categoryName,
+        'isArenaBreaker': isArenaBreaker,
+        'arenaBreakerQuestion': arenaBreakerQuestion,
+        'arenaBreakerSubmissions': arenaBreakerSubmissions,
+        'isArenaBreakerWin': isArenaBreakerWin,
+        'arenaBreakerStatusMessage': arenaBreakerStatusMessage,
+        'presence': presence,
+        'forfeitWinnerId': forfeitWinnerId,
+      };
 
   GameRoomModel copyWith({
     String? status,
@@ -119,6 +127,11 @@ class GameRoomModel {
     Map<String, dynamic>? arenaBreakerQuestion,
     Map<String, dynamic>? arenaBreakerSubmissions,
     bool? isArenaBreakerWin,
+    String? player1Emoji,
+    String? player2Emoji,
+    List<String>? rematchRequests,
+    String? nextMatchId,
+    String? forfeitWinnerId,
   }) {
     return GameRoomModel(
       roomId: roomId,
@@ -131,8 +144,10 @@ class GameRoomModel {
       questionStartedAt: questionStartedAt ?? this.questionStartedAt,
       winnerId: winnerId ?? this.winnerId,
       claimedRewards: claimedRewards,
-      rematchRequests: rematchRequests,
-      nextMatchId: nextMatchId,
+      player1Emoji: player1Emoji ?? this.player1Emoji,
+      player2Emoji: player2Emoji ?? this.player2Emoji,
+      rematchRequests: rematchRequests ?? this.rematchRequests,
+      nextMatchId: nextMatchId ?? this.nextMatchId,
       categoryId: categoryId,
       categoryName: categoryName,
       isArenaBreaker: isArenaBreaker ?? this.isArenaBreaker,
@@ -141,7 +156,7 @@ class GameRoomModel {
       isArenaBreakerWin: isArenaBreakerWin ?? this.isArenaBreakerWin,
       arenaBreakerStatusMessage: arenaBreakerStatusMessage,
       presence: presence,
-      forfeitWinnerId: forfeitWinnerId,
+      forfeitWinnerId: forfeitWinnerId ?? this.forfeitWinnerId,
     );
   }
 }

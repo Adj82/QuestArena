@@ -27,7 +27,7 @@ class ShopController extends StateNotifier<AsyncValue<void>> {
     if (_userId == null) return;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _repository.purchaseItem(
-      userId: _userId!,
+      userId: _userId,
       cost: ShopService.oneOptionLifelineCost,
       oneOptionLifelinesInc: 1,
     ));
@@ -37,7 +37,7 @@ class ShopController extends StateNotifier<AsyncValue<void>> {
     if (_userId == null) return;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _repository.purchaseItem(
-      userId: _userId!,
+      userId: _userId,
       cost: ShopService.twoOptionLifelineCost,
       twoOptionLifelinesInc: 1,
     ));
@@ -47,7 +47,7 @@ class ShopController extends StateNotifier<AsyncValue<void>> {
     if (_userId == null) return;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _repository.purchaseItem(
-      userId: _userId!,
+      userId: _userId,
       cost: cost,
       rankProtectionMatchesInc: matches,
     ));

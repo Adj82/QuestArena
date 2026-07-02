@@ -17,14 +17,27 @@ class UserModel {
   final int matchesPlayed;
   final int currentWinStreak;
   final int highestWinStreak;
-  final DateTime? lastDailyBonusDate;
   final List<String> achievements;
+  final List<String> unlockedAvatars;
+  final Map<String, int> powerUps;
+
+  // Coin & Streak System Fields
+  final int todayCoinsEarned;
+  final DateTime lastCoinResetDate;
+  final DateTime lastDailyLoginRewardDate;
+  final int loginStreak;
+  final DateTime lastLoginDate;
+  final String? lastRewardedMatchId;
+  final String? lastLeagueRewardClaimed; // e.g., 'Gold_Season_1'
+
+  // Additional stats
   final int arenaBreakerWins;
   final int arenaBreakerLosses;
   final double averageAccuracy;
   final int oneOptionLifelines;
   final int twoOptionLifelines;
   final int rankProtectionMatches;
+  final DateTime? lastDailyBonusDate;
 
   UserModel({
     required this.uid,
@@ -43,15 +56,26 @@ class UserModel {
     this.matchesPlayed = 0,
     this.currentWinStreak = 0,
     this.highestWinStreak = 0,
-    this.lastDailyBonusDate,
     this.achievements = const [],
+    this.unlockedAvatars = const [],
+    this.powerUps = const {'fiftyFifty': 5, 'timeFreeze': 5},
+    this.todayCoinsEarned = 0,
+    DateTime? lastCoinResetDate,
+    DateTime? lastDailyLoginRewardDate,
+    this.loginStreak = 0,
+    DateTime? lastLoginDate,
+    this.lastRewardedMatchId,
+    this.lastLeagueRewardClaimed,
     this.arenaBreakerWins = 0,
     this.arenaBreakerLosses = 0,
     this.averageAccuracy = 0.0,
     this.oneOptionLifelines = 0,
     this.twoOptionLifelines = 0,
     this.rankProtectionMatches = 0,
-  });
+    this.lastDailyBonusDate,
+  })  : lastCoinResetDate = lastCoinResetDate ?? DateTime(2000),
+        lastDailyLoginRewardDate = lastDailyLoginRewardDate ?? DateTime(2000),
+        lastLoginDate = lastLoginDate ?? DateTime(2000);
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     return UserModel(
@@ -71,16 +95,31 @@ class UserModel {
       matchesPlayed: json['matchesPlayed'] ?? 0,
       currentWinStreak: json['currentWinStreak'] ?? json['currentStreak'] ?? 0,
       highestWinStreak: json['highestWinStreak'] ?? 0,
-      lastDailyBonusDate: json['lastDailyBonusDate'] != null
-          ? (json['lastDailyBonusDate'] as Timestamp).toDate()
-          : null,
       achievements: List<String>.from(json['achievements'] ?? []),
+      unlockedAvatars: List<String>.from(json['unlockedAvatars'] ?? []),
+      powerUps: Map<String, int>.from(json['powerUps'] ?? {'fiftyFifty': 5, 'timeFreeze': 5}),
+      todayCoinsEarned: json['todayCoinsEarned'] ?? 0,
+      lastCoinResetDate: json['lastCoinResetDate'] != null
+          ? (json['lastCoinResetDate'] as Timestamp).toDate()
+          : DateTime(2000),
+      lastDailyLoginRewardDate: json['lastDailyLoginRewardDate'] != null
+          ? (json['lastDailyLoginRewardDate'] as Timestamp).toDate()
+          : DateTime(2000),
+      loginStreak: json['loginStreak'] ?? 0,
+      lastLoginDate: json['lastLoginDate'] != null
+          ? (json['lastLoginDate'] as Timestamp).toDate()
+          : DateTime(2000),
+      lastRewardedMatchId: json['lastRewardedMatchId'],
+      lastLeagueRewardClaimed: json['lastLeagueRewardClaimed'],
       arenaBreakerWins: json['arenaBreakerWins'] ?? 0,
       arenaBreakerLosses: json['arenaBreakerLosses'] ?? 0,
       averageAccuracy: (json['averageAccuracy'] ?? 0.0).toDouble(),
       oneOptionLifelines: json['oneOptionLifelines'] ?? 0,
       twoOptionLifelines: json['twoOptionLifelines'] ?? 0,
       rankProtectionMatches: json['rankProtectionMatches'] ?? 0,
+      lastDailyBonusDate: json['lastDailyBonusDate'] != null
+          ? (json['lastDailyBonusDate'] as Timestamp).toDate()
+          : null,
     );
   }
 
@@ -101,16 +140,23 @@ class UserModel {
         'matchesPlayed': matchesPlayed,
         'currentWinStreak': currentWinStreak,
         'highestWinStreak': highestWinStreak,
-        'lastDailyBonusDate': lastDailyBonusDate != null
-            ? Timestamp.fromDate(lastDailyBonusDate!)
-            : null,
         'achievements': achievements,
+        'unlockedAvatars': unlockedAvatars,
+        'powerUps': powerUps,
+        'todayCoinsEarned': todayCoinsEarned,
+        'lastCoinResetDate': lastCoinResetDate,
+        'lastDailyLoginRewardDate': lastDailyLoginRewardDate,
+        'loginStreak': loginStreak,
+        'lastLoginDate': lastLoginDate,
+        'lastRewardedMatchId': lastRewardedMatchId,
+        'lastLeagueRewardClaimed': lastLeagueRewardClaimed,
         'arenaBreakerWins': arenaBreakerWins,
         'arenaBreakerLosses': arenaBreakerLosses,
         'averageAccuracy': averageAccuracy,
         'oneOptionLifelines': oneOptionLifelines,
         'twoOptionLifelines': twoOptionLifelines,
         'rankProtectionMatches': rankProtectionMatches,
+        'lastDailyBonusDate': lastDailyBonusDate != null ? Timestamp.fromDate(lastDailyBonusDate!) : null,
       };
 
   UserModel copyWith({
@@ -119,6 +165,15 @@ class UserModel {
     int? level,
     int? xp,
     int? coins,
+    int? todayCoinsEarned,
+    DateTime? lastCoinResetDate,
+    DateTime? lastDailyLoginRewardDate,
+    int? loginStreak,
+    DateTime? lastLoginDate,
+    int? currentWinStreak,
+    int? highestWinStreak,
+    String? lastRewardedMatchId,
+    String? lastLeagueRewardClaimed,
     String? rank,
     int? subRank,
     int? rankPoints,
@@ -126,10 +181,10 @@ class UserModel {
     int? losses,
     int? draws,
     int? matchesPlayed,
-    int? currentWinStreak,
-    int? highestWinStreak,
     DateTime? lastDailyBonusDate,
     List<String>? achievements,
+    List<String>? unlockedAvatars,
+    Map<String, int>? powerUps,
     int? arenaBreakerWins,
     int? arenaBreakerLosses,
     double? averageAccuracy,
@@ -145,6 +200,15 @@ class UserModel {
       level: level ?? this.level,
       xp: xp ?? this.xp,
       coins: coins ?? this.coins,
+      todayCoinsEarned: todayCoinsEarned ?? this.todayCoinsEarned,
+      lastCoinResetDate: lastCoinResetDate ?? this.lastCoinResetDate,
+      lastDailyLoginRewardDate: lastDailyLoginRewardDate ?? this.lastDailyLoginRewardDate,
+      loginStreak: loginStreak ?? this.loginStreak,
+      lastLoginDate: lastLoginDate ?? this.lastLoginDate,
+      currentWinStreak: currentWinStreak ?? this.currentWinStreak,
+      highestWinStreak: highestWinStreak ?? this.highestWinStreak,
+      lastRewardedMatchId: lastRewardedMatchId ?? this.lastRewardedMatchId,
+      lastLeagueRewardClaimed: lastLeagueRewardClaimed ?? this.lastLeagueRewardClaimed,
       rank: rank ?? this.rank,
       subRank: subRank ?? this.subRank,
       rankPoints: rankPoints ?? this.rankPoints,
@@ -152,17 +216,16 @@ class UserModel {
       losses: losses ?? this.losses,
       draws: draws ?? this.draws,
       matchesPlayed: matchesPlayed ?? this.matchesPlayed,
-      currentWinStreak: currentWinStreak ?? this.currentWinStreak,
-      highestWinStreak: highestWinStreak ?? this.highestWinStreak,
       lastDailyBonusDate: lastDailyBonusDate ?? this.lastDailyBonusDate,
       achievements: achievements ?? this.achievements,
+      unlockedAvatars: unlockedAvatars ?? this.unlockedAvatars,
+      powerUps: powerUps ?? this.powerUps,
       arenaBreakerWins: arenaBreakerWins ?? this.arenaBreakerWins,
       arenaBreakerLosses: arenaBreakerLosses ?? this.arenaBreakerLosses,
       averageAccuracy: averageAccuracy ?? this.averageAccuracy,
       oneOptionLifelines: oneOptionLifelines ?? this.oneOptionLifelines,
       twoOptionLifelines: twoOptionLifelines ?? this.twoOptionLifelines,
-      rankProtectionMatches:
-          rankProtectionMatches ?? this.rankProtectionMatches,
+      rankProtectionMatches: rankProtectionMatches ?? this.rankProtectionMatches,
     );
   }
 }

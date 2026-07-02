@@ -1,5 +1,4 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 import '../../core/errors/app_error.dart';
 import '../../core/errors/result.dart';
 import '../models/user_model.dart';
@@ -8,6 +7,7 @@ import '../models/match_end_result.dart';
 import '../services/firestore_service.dart';
 import '../services/xp_service.dart';
 import '../services/rank_service.dart';
+import '../services/avatar_service.dart';
 import '../../core/utils/level_system.dart';
 
 class UserRepository {
@@ -68,11 +68,15 @@ class UserRepository {
     });
   }
 
-  Future<void> updateAvatarUrl(String uid, String avatarUrl) async {
-    await _service.setData(
-      path: 'users/$uid',
-      data: {'avatarUrl': avatarUrl},
-    );
+  Future<Result<void>> updateAvatarUrl(String uid, String url) async {
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'avatarUrl': url,
+      });
+      return const Success(null);
+    } catch (e) {
+      return Failure(DatabaseError(e.toString()));
+    }
   }
 
   Future<MatchEndResult?> processMatchEnd({
@@ -115,7 +119,7 @@ class UserRepository {
       if (remainingRankProtection > 0 && (rankUpdate.pointsGained < 0 || rankUpdate.demoted)) {
         rankProtectionUsed = true;
         remainingRankProtection--;
-        
+
         // Reset rank update to original state
         rankUpdate = RankUpdateResult(
           oldRank: user.rank,
@@ -132,17 +136,13 @@ class UserRepository {
 
       final totalXp = user.xp + xpRewards.total;
       final newLevel = LevelSystem.getCurrentLevel(totalXp);
-      
+
       final currentWinStreak = isWin ? user.currentWinStreak + 1 : 0;
-      final highestWinStreak = currentWinStreak > user.highestWinStreak 
-          ? currentWinStreak 
-          : user.highestWinStreak;
+      final highestWinStreak = currentWinStreak > user.highestWinStreak ? currentWinStreak : user.highestWinStreak;
 
-      final lastDailyBonusDate = xpRewards.dailyBonusXp > 0 
-          ? DateTime.now() 
-          : user.lastDailyBonusDate;
+      final lastDailyBonusDate = xpRewards.dailyBonusXp > 0 ? DateTime.now() : user.lastDailyBonusDate;
 
-      // Achievements
+      // Achievements (Simplified logic, the detailed one is in AchievementService)
       final achievements = List<String>.from(user.achievements);
       if (isWin && !achievements.contains('first_win')) {
         achievements.add('first_win');
@@ -178,6 +178,18 @@ class UserRepository {
         'arenaBreakerLosses': abLosses,
         'rankProtectionMatches': remainingRankProtection,
       });
+
+      // Unlock Avatars if league changed or even if it didn't (to be safe)
+      final newUnlockedAvatars = AvatarService.getEligibleAvatars(
+        rankUpdate.newRank,
+        user.unlockedAvatars,
+      );
+
+      if (newUnlockedAvatars.length != user.unlockedAvatars.length) {
+        transaction.update(userRef, {
+          'unlockedAvatars': newUnlockedAvatars,
+        });
+      }
 
       result = MatchEndResult(
         xpRewards: xpRewards,
@@ -223,11 +235,13 @@ class UserRepository {
         .limit(20)
         .snapshots()
         .map((snapshot) {
-      final history = snapshot.docs
-          .map((doc) => MatchModel.fromJson(doc.data()))
-          .toList();
+      final history = snapshot.docs.map((doc) => MatchModel.fromJson(doc.data())).toList();
       history.sort((a, b) => b.timestamp.compareTo(a.timestamp));
       return history;
     });
+  }
+
+  Future<void> deleteUserProfile(String uid) async {
+    await FirebaseFirestore.instance.collection('users').doc(uid).delete();
   }
 }
