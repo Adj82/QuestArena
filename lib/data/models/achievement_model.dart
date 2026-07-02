@@ -8,6 +8,7 @@ enum AchievementType {
   matchesWon,
   questionsCorrect,
   perfectScores,
+  loginStreak,
 }
 
 class Achievement {
@@ -175,5 +176,14 @@ final List<Map<String, dynamic>> achievementDefinitions = [
     'type': AchievementType.perfectScores,
     'target': 50,
     'rewardCoins': 2000,
+  },
+  // Temporary / Testing
+  {
+    'id': 'login_streak_tester',
+    'title': 'Login Streak Tester',
+    'description': 'Login for 2 consecutive days.',
+    'type': AchievementType.loginStreak,
+    'target': 2,
+    'rewardCoins': 20,
   },
 ];

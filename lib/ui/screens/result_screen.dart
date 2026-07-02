@@ -27,7 +27,6 @@ import '../widgets/rank_progress_bar.dart';
 import '../widgets/smart_avatar.dart';
 import '../widgets/rank_protection.dart';
 import '../widgets/streak_reward_popup.dart';
-import '../widgets/animated_coin_counter.dart';
 import 'home_screen.dart';
 import 'game_screen.dart';
 import '../../core/errors/result.dart';

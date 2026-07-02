@@ -21,7 +21,7 @@ class CreateProfileScreen extends ConsumerStatefulWidget {
 
 class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
   final _usernameController = TextEditingController();
-  String _selectedAvatar = AppAvatars.avatars[0];
+  late String _selectedAvatar = AppAvatars.avatars[0].url;
   bool _isLoading = false;
 
   Future<void> _saveProfile() async {
@@ -37,11 +37,18 @@ class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
     final currentUser = ref.read(authStateProvider).value;
 
     if (currentUser != null) {
+      // Default unlocked avatars (Bronze)
+      final defaultUnlocked = AppAvatars.avatars
+          .where((a) => a.requiredLeague == 'Bronze')
+          .map((a) => a.url)
+          .toList();
+
       final newUser = UserModel(
         uid: currentUser.uid,
         email: currentUser.email ?? '',
         username: username,
         avatarUrl: _selectedAvatar,
+        unlockedAvatars: defaultUnlocked,
       );
 
       final result = await ref.read(userRepositoryProvider).createUserProfile(newUser);
@@ -89,10 +96,23 @@ class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
                     ),
                     itemCount: AppAvatars.avatars.length,
                     itemBuilder: (context, index) {
-                      final avatarUrl = AppAvatars.avatars[index];
-                      final isSelected = _selectedAvatar == avatarUrl;
+                      final avatar = AppAvatars.avatars[index];
+                      final isSelected = _selectedAvatar == avatar.url;
+                      final isBronze = avatar.requiredLeague == 'Bronze';
+
                       return GestureDetector(
-                        onTap: () => setState(() => _selectedAvatar = avatarUrl),
+                        onTap: () {
+                          if (isBronze) {
+                            setState(() => _selectedAvatar = avatar.url);
+                          } else {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text('Reach ${avatar.requiredLeague} League to unlock this avatar.'),
+                                backgroundColor: AppColors.red,
+                              ),
+                            );
+                          }
+                        },
                         child: Container(
                           padding: const EdgeInsets.all(4),
                           decoration: BoxDecoration(
@@ -104,13 +124,24 @@ class _CreateProfileScreenState extends ConsumerState<CreateProfileScreen> {
                             radius: 40,
                             backgroundColor: AppColors.surface,
                             child: ClipOval(
-                              child: CachedNetworkImage(
-                                imageUrl: avatarUrl,
-                                width: 80,
-                                height: 80,
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
-                                errorWidget: (context, url, error) => const Icon(Icons.person),
+                              child: Stack(
+                                children: [
+                                  CachedNetworkImage(
+                                    imageUrl: avatar.url,
+                                    width: 80,
+                                    height: 80,
+                                    fit: BoxFit.cover,
+                                    placeholder: (context, url) => const CircularProgressIndicator(strokeWidth: 2),
+                                    errorWidget: (context, url, error) => const Icon(Icons.person),
+                                  ),
+                                  if (!isBronze)
+                                    Positioned.fill(
+                                      child: Container(
+                                        color: Colors.black.withValues(alpha: 0.4),
+                                        child: const Icon(Icons.lock_rounded, color: Colors.white, size: 20),
+                                      ),
+                                    ),
+                                ],
                               ),
                             ),
                           ),

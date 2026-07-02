@@ -7,6 +7,7 @@ import '../models/match_end_result.dart';
 import '../services/firestore_service.dart';
 import '../services/xp_service.dart';
 import '../services/rank_service.dart';
+import '../services/avatar_service.dart';
 import '../../core/utils/level_system.dart';
 
 class UserRepository {
@@ -177,6 +178,18 @@ class UserRepository {
         'arenaBreakerLosses': abLosses,
         'rankProtectionMatches': remainingRankProtection,
       });
+
+      // Unlock Avatars if league changed or even if it didn't (to be safe)
+      final newUnlockedAvatars = AvatarService.getEligibleAvatars(
+        rankUpdate.newRank,
+        user.unlockedAvatars,
+      );
+
+      if (newUnlockedAvatars.length != user.unlockedAvatars.length) {
+        transaction.update(userRef, {
+          'unlockedAvatars': newUnlockedAvatars,
+        });
+      }
 
       result = MatchEndResult(
         xpRewards: xpRewards,

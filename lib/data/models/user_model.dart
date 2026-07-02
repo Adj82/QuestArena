@@ -18,6 +18,7 @@ class UserModel {
   final int currentWinStreak;
   final int highestWinStreak;
   final List<String> achievements;
+  final List<String> unlockedAvatars;
   final Map<String, int> powerUps;
 
   // Coin & Streak System Fields
@@ -56,6 +57,7 @@ class UserModel {
     this.currentWinStreak = 0,
     this.highestWinStreak = 0,
     this.achievements = const [],
+    this.unlockedAvatars = const [],
     this.powerUps = const {'fiftyFifty': 5, 'timeFreeze': 5},
     this.todayCoinsEarned = 0,
     DateTime? lastCoinResetDate,
@@ -94,6 +96,7 @@ class UserModel {
       currentWinStreak: json['currentWinStreak'] ?? json['currentStreak'] ?? 0,
       highestWinStreak: json['highestWinStreak'] ?? 0,
       achievements: List<String>.from(json['achievements'] ?? []),
+      unlockedAvatars: List<String>.from(json['unlockedAvatars'] ?? []),
       powerUps: Map<String, int>.from(json['powerUps'] ?? {'fiftyFifty': 5, 'timeFreeze': 5}),
       todayCoinsEarned: json['todayCoinsEarned'] ?? 0,
       lastCoinResetDate: json['lastCoinResetDate'] != null
@@ -138,6 +141,7 @@ class UserModel {
         'currentWinStreak': currentWinStreak,
         'highestWinStreak': highestWinStreak,
         'achievements': achievements,
+        'unlockedAvatars': unlockedAvatars,
         'powerUps': powerUps,
         'todayCoinsEarned': todayCoinsEarned,
         'lastCoinResetDate': lastCoinResetDate,
@@ -179,6 +183,7 @@ class UserModel {
     int? matchesPlayed,
     DateTime? lastDailyBonusDate,
     List<String>? achievements,
+    List<String>? unlockedAvatars,
     Map<String, int>? powerUps,
     int? arenaBreakerWins,
     int? arenaBreakerLosses,
@@ -213,6 +218,7 @@ class UserModel {
       matchesPlayed: matchesPlayed ?? this.matchesPlayed,
       lastDailyBonusDate: lastDailyBonusDate ?? this.lastDailyBonusDate,
       achievements: achievements ?? this.achievements,
+      unlockedAvatars: unlockedAvatars ?? this.unlockedAvatars,
       powerUps: powerUps ?? this.powerUps,
       arenaBreakerWins: arenaBreakerWins ?? this.arenaBreakerWins,
       arenaBreakerLosses: arenaBreakerLosses ?? this.arenaBreakerLosses,

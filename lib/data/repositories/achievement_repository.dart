@@ -76,4 +76,54 @@ class AchievementRepository {
       return Failure(DatabaseError(e.toString()));
     }
   }
+
+  /// Sync progress to an absolute value and handle unlocking.
+  Future<Result<Achievement?>> syncAchievementProgress({
+    required String uid,
+    required String achievementId,
+    required int absoluteProgress,
+  }) async {
+    try {
+      final userRef = _firestore.collection('users').doc(uid);
+      final achievementRef = userRef.collection('achievements').doc(achievementId);
+
+      return await _firestore.runTransaction((transaction) async {
+        final achievementDoc = await transaction.get(achievementRef);
+        final userDoc = await transaction.get(userRef);
+
+        if (!userDoc.exists) return const Failure(DatabaseError("User not found"));
+
+        final definition = achievementDefinitions.firstWhere((d) => d['id'] == achievementId);
+        final currentProgress = achievementDoc.exists ? (achievementDoc.data()?['progress'] ?? 0) : 0;
+        final isAlreadyUnlocked = achievementDoc.exists ? (achievementDoc.data()?['isUnlocked'] ?? false) : false;
+
+        if (isAlreadyUnlocked) return const Success(null); 
+
+        // Proceed if absoluteProgress is >= currentProgress
+        if (absoluteProgress < currentProgress) return const Success(null);
+
+        final shouldUnlock = absoluteProgress >= (definition['target'] as int);
+
+        final updateData = {
+          'progress': absoluteProgress,
+          'isUnlocked': shouldUnlock,
+          'unlockedAt': shouldUnlock ? FieldValue.serverTimestamp() : null,
+        };
+
+        transaction.set(achievementRef, updateData, SetOptions(merge: true));
+
+        if (shouldUnlock) {
+          final currentCoins = userDoc.data()?['coins'] ?? 0;
+          final reward = definition['rewardCoins'] as int;
+          transaction.update(userRef, {'coins': currentCoins + reward});
+          
+          return Success(Achievement.fromJson(updateData, definition));
+        }
+
+        return const Success(null);
+      });
+    } catch (e) {
+      return Failure(DatabaseError(e.toString()));
+    }
+  }
 }

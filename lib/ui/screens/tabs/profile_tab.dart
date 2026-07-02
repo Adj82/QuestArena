@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
-import '../../../core/constants/avatars.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/auth_providers.dart';
 import '../../../providers/achievement_providers.dart';
 import '../../../data/models/achievement_model.dart';
 import '../../../core/errors/result.dart';
 import '../../widgets/animated_coin_counter.dart';
+import '../avatar_selection_screen.dart';
 
 class ProfileTab extends ConsumerStatefulWidget {
   const ProfileTab({super.key});
@@ -19,71 +20,12 @@ class ProfileTab extends ConsumerStatefulWidget {
 }
 
 class _ProfileTabState extends ConsumerState<ProfileTab> {
-  Future<void> _changeAvatar(String uid) async {
-    final selectedAvatar = await showModalBottomSheet<String>(
-      context: context,
-      backgroundColor: AppColors.cardBg,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('SELECT NEW AVATAR',
-                style: AppTextStyles.label.copyWith(color: AppColors.gold)),
-            const SizedBox(height: 24),
-            Flexible(
-              child: GridView.builder(
-                shrinkWrap: true,
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 16,
-                  mainAxisSpacing: 16,
-                ),
-                itemCount: AppAvatars.avatars.length,
-                itemBuilder: (context, index) {
-                  final avatarUrl = AppAvatars.avatars[index];
-                  return GestureDetector(
-                    onTap: () => Navigator.pop(context, avatarUrl),
-                    child: CircleAvatar(
-                      radius: 40,
-                      backgroundColor: AppColors.surface,
-                      child: ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: avatarUrl,
-                          width: 80,
-                          height: 80,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const CircularProgressIndicator(strokeWidth: 2),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.person),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (selectedAvatar != null && mounted) {
-      await ref.read(userRepositoryProvider).updateAvatarUrl(uid, selectedAvatar);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final userAsync = ref.watch(currentUserProvider);
 
     return userAsync.when(
-      loading: () =>
-          const Center(child: CircularProgressIndicator(color: AppColors.gold)),
+      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.gold)),
       error: (e, s) => Center(child: Text('Error: $e')),
       data: (user) {
         if (user == null) return const Center(child: Text('User not found'));
@@ -93,8 +35,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
         return Scaffold(
           backgroundColor: AppColors.bgBase,
           appBar: AppBar(
-            title: Text('PLAYER PROFILE',
-                style: AppTextStyles.display.copyWith(fontSize: 18)),
+            title: Text('PLAYER PROFILE', style: AppTextStyles.display.copyWith(fontSize: 18)),
             backgroundColor: Colors.transparent,
             elevation: 0,
             actions: [
@@ -108,45 +49,67 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
             padding: const EdgeInsets.all(24),
             child: Column(
               children: [
-                // Header
+                // Header / Profile Section
                 Stack(
+                  alignment: Alignment.center,
                   children: [
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: AppColors.surface,
-                      child: ClipOval(
-                        child: CachedNetworkImage(
-                          imageUrl: user.avatarUrl ?? '',
-                          width: 100,
-                          height: 100,
-                          fit: BoxFit.cover,
-                          placeholder: (context, url) =>
-                              const CircularProgressIndicator(),
-                          errorWidget: (context, url, error) =>
-                              const Icon(Icons.person, size: 40),
-                        ),
+                    // Glow behind avatar
+                    Container(
+                      width: 120,
+                      height: 120,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.gold.withValues(alpha: 0.15),
+                            blurRadius: 40,
+                            spreadRadius: 5,
+                          ),
+                        ],
                       ),
                     ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: () => _changeAvatar(user.uid),
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(
-                              color: AppColors.gold, shape: BoxShape.circle),
-                          child: const Icon(Icons.edit_rounded,
-                              size: 16, color: Colors.black),
+                    Hero(
+                      tag: 'selected_avatar',
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: AppColors.gold, width: 2),
+                        ),
+                        child: SmartAvatar(
+                          avatarUrl: user.avatarUrl,
+                          size: 100,
+                          showBorder: false,
                         ),
                       ),
                     ),
                   ],
-                ),
+                ).animate().scale(duration: 600.ms, curve: Curves.easeOutBack),
+                
                 const SizedBox(height: 16),
                 Text(user.username, style: AppTextStyles.headline),
-                Text(user.rank,
-                    style: AppTextStyles.label.copyWith(color: AppColors.gold)),
+                Text(user.rank.toUpperCase(), style: AppTextStyles.label.copyWith(color: AppColors.gold, letterSpacing: 2)),
+
+                const SizedBox(height: 24),
+                
+                // Change Avatar Button
+                ElevatedButton.icon(
+                  onPressed: () => Navigator.push(
+                    context, 
+                    MaterialPageRoute(builder: (_) => const AvatarSelectionScreen())
+                  ),
+                  icon: const Icon(Icons.palette_rounded, size: 18),
+                  label: const Text('CHANGE AVATAR', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.cardBg,
+                    foregroundColor: AppColors.gold,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      side: const BorderSide(color: AppColors.surface),
+                    ),
+                  ),
+                ).animate().fadeIn(delay: 200.ms),
 
                 const SizedBox(height: 32),
 
@@ -154,33 +117,21 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    _ProfileStat(
-                        label: 'LEVEL',
-                        value: '${user.level}',
-                        color: AppColors.purple,
-                        icon: Icons.star_rounded),
-                    _ProfileStat(
-                        label: 'WINS',
-                        value: '${user.wins}',
-                        color: AppColors.teal,
-                        icon: Icons.emoji_events_rounded),
+                    _ProfileStat(label: 'LEVEL', value: '${user.level}', color: AppColors.purple, icon: Icons.star_rounded),
+                    _ProfileStat(label: 'WINS', value: '${user.wins}', color: AppColors.teal, icon: Icons.emoji_events_rounded),
                     Column(
                       children: [
-                        const Icon(Icons.monetization_on_rounded,
-                            color: AppColors.gold, size: 24),
+                        const Icon(Icons.monetization_on_rounded, color: AppColors.gold, size: 24),
                         const SizedBox(height: 8),
                         AnimatedCoinCounter(
                           value: user.coins,
-                          style: AppTextStyles.headline
-                              .copyWith(color: Colors.white, fontSize: 18),
+                          style: AppTextStyles.headline.copyWith(color: Colors.white, fontSize: 18),
                         ),
-                        Text('COINS',
-                            style: AppTextStyles.label.copyWith(
-                                fontSize: 10, color: AppColors.textSecondary)),
+                        Text('COINS', style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textSecondary)),
                       ],
                     ),
                   ],
-                ),
+                ).animate().fadeIn(delay: 400.ms),
 
                 const SizedBox(height: 32),
 
@@ -216,23 +167,24 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                       ),
                     ],
                   ),
-                ),
+                ).animate().fadeIn(delay: 600.ms).slideY(begin: 0.1, end: 0),
 
                 const SizedBox(height: 40),
 
                 // Achievement Grid
-                Text('ACHIEVEMENTS', style: AppTextStyles.label),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('ACHIEVEMENTS', style: AppTextStyles.label),
+                ),
                 const SizedBox(height: 16),
                 achievementsAsync.when(
-                  loading: () =>
-                      const Center(child: CircularProgressIndicator()),
+                  loading: () => const Center(child: CircularProgressIndicator()),
                   error: (e, s) => Text('Error: $e'),
                   data: (achievements) => ListView.separated(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
                     itemCount: achievements.length,
-                    separatorBuilder: (context, index) =>
-                        const SizedBox(height: 12),
+                    separatorBuilder: (context, index) => const SizedBox(height: 12),
                     itemBuilder: (context, index) {
                       final ach = achievements[index];
                       return _AchievementTile(achievement: ach);
@@ -245,12 +197,10 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
                 // Delete Account Button
                 TextButton.icon(
                   onPressed: () => _showDeleteConfirmation(context, ref, user.uid),
-                  icon: const Icon(Icons.delete_forever_rounded,
-                      color: AppColors.red, size: 20),
+                  icon: const Icon(Icons.delete_forever_rounded, color: AppColors.red, size: 20),
                   label: Text(
                     'DELETE ACCOUNT',
-                    style: AppTextStyles.label.copyWith(
-                        color: AppColors.red, fontWeight: FontWeight.bold),
+                    style: AppTextStyles.label.copyWith(color: AppColors.red, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -267,8 +217,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppColors.cardBg,
-        title: Text('DELETE ACCOUNT?',
-            style: AppTextStyles.headline.copyWith(color: AppColors.red)),
+        title: Text('DELETE ACCOUNT?', style: AppTextStyles.headline.copyWith(color: AppColors.red)),
         content: Text(
           'This action is permanent. All your XP, coins, and achievements will be lost forever.',
           style: AppTextStyles.bodyMd,
@@ -300,8 +249,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> {
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: AppColors.red),
-            child: const Text('DELETE',
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: const Text('DELETE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -316,28 +264,21 @@ class _AchievementTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final bool isUnlocked = achievement.isUnlocked;
-    final double progressPercent =
-        (achievement.progress / achievement.target).clamp(0.0, 1.0);
+    final double progressPercent = (achievement.progress / achievement.target).clamp(0.0, 1.0);
 
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: isUnlocked
-            ? AppColors.cardBg
-            : AppColors.cardBg.withValues(alpha: 0.5),
+        color: isUnlocked ? AppColors.cardBg : AppColors.cardBg.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-            color: isUnlocked ? AppColors.gold : AppColors.surface,
-            width: isUnlocked ? 2 : 1),
+        border: Border.all(color: isUnlocked ? AppColors.gold : AppColors.surface, width: isUnlocked ? 2 : 1),
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: isUnlocked
-                  ? AppColors.gold.withValues(alpha: 0.1)
-                  : AppColors.surface,
+              color: isUnlocked ? AppColors.gold.withValues(alpha: 0.1) : AppColors.surface,
               shape: BoxShape.circle,
             ),
             child: Icon(
@@ -360,8 +301,7 @@ class _AchievementTile extends StatelessWidget {
                 ),
                 Text(
                   achievement.description,
-                  style: AppTextStyles.label
-                      .copyWith(fontSize: 10, color: AppColors.textMuted),
+                  style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textMuted),
                 ),
                 const SizedBox(height: 12),
                 ClipRRect(
@@ -409,7 +349,10 @@ class _AchievementTile extends StatelessWidget {
         return Icons.psychology_rounded;
       case AchievementType.perfectScores:
         return Icons.star_rounded;
+      case AchievementType.loginStreak:
+        return Icons.whatshot_rounded;
     }
+    return Icons.help_outline_rounded;
   }
 }
 
@@ -419,11 +362,7 @@ class _ProfileStat extends StatelessWidget {
   final Color color;
   final IconData icon;
 
-  const _ProfileStat(
-      {required this.label,
-      required this.value,
-      required this.color,
-      required this.icon});
+  const _ProfileStat({required this.label, required this.value, required this.color, required this.icon});
 
   @override
   Widget build(BuildContext context) {
@@ -431,12 +370,8 @@ class _ProfileStat extends StatelessWidget {
       children: [
         Icon(icon, color: color, size: 24),
         const SizedBox(height: 8),
-        Text(value,
-            style: AppTextStyles.headline
-                .copyWith(fontSize: 18, color: Colors.white)),
-        Text(label,
-            style: AppTextStyles.label
-                .copyWith(fontSize: 10, color: AppColors.textSecondary)),
+        Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18, color: Colors.white)),
+        Text(label, style: AppTextStyles.label.copyWith(fontSize: 10, color: AppColors.textSecondary)),
       ],
     );
   }
@@ -469,12 +404,9 @@ class _StreakRow extends StatelessWidget {
         ),
         const SizedBox(width: 16),
         Expanded(
-          child: Text(label,
-              style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
+          child: Text(label, style: AppTextStyles.bodyMd.copyWith(fontWeight: FontWeight.bold)),
         ),
-        Text(value,
-            style:
-                AppTextStyles.headline.copyWith(fontSize: 18, color: color)),
+        Text(value, style: AppTextStyles.headline.copyWith(fontSize: 18, color: color)),
       ],
     );
   }
