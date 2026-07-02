@@ -389,6 +389,12 @@ class GameRepository {
     });
   }
 
+  Future<void> activateRankProtectionForMatch(String roomId, int playerNumber, bool active) async {
+    await _db.collection('gameRooms').doc(roomId).update({
+      'player$playerNumber.rankProtectionActive': active,
+    });
+  }
+
   Future<void> claimRewards(String roomId, String userId, bool isWin) async {
     final roomRef = _db.collection('gameRooms').doc(roomId);
     await _db.runTransaction((transaction) async {

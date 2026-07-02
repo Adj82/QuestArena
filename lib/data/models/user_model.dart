@@ -25,6 +25,8 @@ class UserModel {
   final int oneOptionLifelines;
   final int twoOptionLifelines;
   final int rankProtectionMatches;
+  final bool rankProtectionActive;
+  final int ownedShieldPackage;
 
   UserModel({
     required this.uid,
@@ -51,6 +53,8 @@ class UserModel {
     this.oneOptionLifelines = 0,
     this.twoOptionLifelines = 0,
     this.rankProtectionMatches = 0,
+    this.rankProtectionActive = false,
+    this.ownedShieldPackage = 0,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -81,6 +85,8 @@ class UserModel {
       oneOptionLifelines: json['oneOptionLifelines'] ?? 0,
       twoOptionLifelines: json['twoOptionLifelines'] ?? 0,
       rankProtectionMatches: json['rankProtectionMatches'] ?? 0,
+      rankProtectionActive: json['rankProtectionActive'] ?? false,
+      ownedShieldPackage: json['ownedShieldPackage'] ?? 0,
     );
   }
 
@@ -111,6 +117,8 @@ class UserModel {
         'oneOptionLifelines': oneOptionLifelines,
         'twoOptionLifelines': twoOptionLifelines,
         'rankProtectionMatches': rankProtectionMatches,
+        'rankProtectionActive': rankProtectionActive,
+        'ownedShieldPackage': ownedShieldPackage,
       };
 
   UserModel copyWith({
@@ -136,6 +144,8 @@ class UserModel {
     int? oneOptionLifelines,
     int? twoOptionLifelines,
     int? rankProtectionMatches,
+    bool? rankProtectionActive,
+    int? ownedShieldPackage,
   }) {
     return UserModel(
       uid: uid,
@@ -163,6 +173,8 @@ class UserModel {
       twoOptionLifelines: twoOptionLifelines ?? this.twoOptionLifelines,
       rankProtectionMatches:
           rankProtectionMatches ?? this.rankProtectionMatches,
+      rankProtectionActive: rankProtectionActive ?? this.rankProtectionActive,
+      ownedShieldPackage: ownedShieldPackage ?? this.ownedShieldPackage,
     );
   }
 }

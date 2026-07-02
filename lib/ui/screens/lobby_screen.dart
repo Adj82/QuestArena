@@ -161,14 +161,26 @@ class _LobbyScreenState extends ConsumerState<LobbyScreen> {
                   left: 40,
                   right: 40,
                     child: ElevatedButton(
-                      onPressed: () {
+                      onPressed: () async {
                         if (currentUser == null) return;
+                        
                         final isP1 = currentUser.uid == p1['uid'];
-                        ref.read(gameRepositoryProvider).setPlayerReady(
-                            widget.roomId,
-                            isP1 ? 1 : 2,
-                            currentUser.uid,
-                          );
+                        final playerNum = isP1 ? 1 : 2;
+
+                        // Rely solely on the toggle from Battle Hub
+                        final bool activateProtection = currentUser.rankProtectionActive;
+                        
+                        await ref.read(gameRepositoryProvider).activateRankProtectionForMatch(
+                          widget.roomId,
+                          playerNum,
+                          activateProtection,
+                        );
+                        
+                        await ref.read(gameRepositoryProvider).setPlayerReady(
+                          widget.roomId,
+                          playerNum,
+                          currentUser.uid,
+                        );
                     },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.neonViolet,

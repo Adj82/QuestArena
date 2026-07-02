@@ -89,9 +89,12 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       final isWinner = widget.room.winnerId == currentUser.uid;
       final isDraw = widget.room.winnerId == 'draw';
 
-      final myScore = currentUser.uid == widget.room.player1['uid'] 
-          ? widget.room.player1['score'] 
-          : (widget.room.player2?['score'] ?? 0);
+      final myData = currentUser.uid == widget.room.player1['uid'] 
+          ? widget.room.player1 
+          : widget.room.player2;
+      
+      final myScore = myData?['score'] ?? 0;
+      final rankProtectionActive = myData?['rankProtectionActive'] ?? false;
       
       final correctAnswers = myScore ~/ 10;
       const totalQuestions = 10;
@@ -105,6 +108,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         totalQuestions: totalQuestions,
         coinsGained: isWinner ? 20 : 5,
         isArenaBreakerWin: widget.room.isArenaBreakerWin,
+        rankProtectionActive: rankProtectionActive,
       );
 
       final opponentScore = currentUser.uid == widget.room.player1['uid'] 
