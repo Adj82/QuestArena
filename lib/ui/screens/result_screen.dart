@@ -24,6 +24,7 @@ import '../widgets/xp_summary_card.dart';
 import '../widgets/rank_badge.dart';
 import '../widgets/rank_progress_bar.dart';
 import '../widgets/smart_avatar.dart';
+import '../widgets/rank_protection.dart';
 import 'home_screen.dart';
 import 'game_screen.dart';
 
@@ -89,9 +90,12 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       final isWinner = widget.room.winnerId == currentUser.uid;
       final isDraw = widget.room.winnerId == 'draw';
 
-      final myScore = currentUser.uid == widget.room.player1['uid'] 
-          ? widget.room.player1['score'] 
-          : (widget.room.player2?['score'] ?? 0);
+      final myData = currentUser.uid == widget.room.player1['uid'] 
+          ? widget.room.player1 
+          : widget.room.player2;
+      
+      final myScore = myData?['score'] ?? 0;
+      final rankProtectionActive = myData?['rankProtectionActive'] ?? false;
       
       final correctAnswers = myScore ~/ 10;
       const totalQuestions = 10;
@@ -106,13 +110,14 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
         coinsGained: isWinner ? 20 : 5,
         isArenaBreakerWin: widget.room.isArenaBreakerWin,
         isRanked: widget.room.isRanked,
+        rankProtectionActive: rankProtectionActive,
       );
 
       final opponentScore = currentUser.uid == widget.room.player1['uid'] 
           ? (widget.room.player2?['score'] ?? 0)
           : widget.room.player1['score'];
           
-          final opponentAvatar = currentUser.uid == widget.room.player1['uid']
+      final opponentAvatar = currentUser.uid == widget.room.player1['uid']
           ? (widget.room.player2?['avatarUrl'])
           : widget.room.player1['avatarUrl'];
 
@@ -123,7 +128,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
       final history = MatchModel(
         id: widget.room.roomId,
         opponentName: opponentName,
-        opponentAvatarUrl: opponentAvatar,
+        opponentAvatarUrl: opponentAvatar ?? 'f1', // Fallback to first character if missing
         playerScore: myScore,
         opponentScore: opponentScore,
         xpEarned: result?.xpRewards.total ?? 0,
@@ -287,6 +292,9 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                   if (_matchResult?.rankUpdate.demoted == true)
                     _buildStatusBanner('DEMOTED', AppColors.red),
 
+                  if (_matchResult?.rankProtectionUsed == true)
+                    _buildStatusBanner('RANK PROTECTION USED', AppColors.purple),
+
                   Text(
                     widget.isPractice 
                         ? 'PRACTICE COMPLETE' 
@@ -319,7 +327,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
                     
                     const SizedBox(height: 24),
                     
-                    _buildRankSection(_matchResult!.rankUpdate)
+                    _buildRankSection(_matchResult!.rankUpdate, currentUser)
                         .animate()
                         .fadeIn(delay: 600.ms),
                   ] else if (widget.isPractice)
@@ -471,6 +479,7 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
   }
 
   Widget _buildRankSection(RankUpdateResult rankUpdate) {
+  Widget _buildRankSection(RankUpdateResult rankUpdate, UserModel? user) {
     final pointsDiff = rankUpdate.pointsGained;
     final pointsColor = pointsDiff >= 0 ? AppColors.teal : AppColors.red;
     final pointsText = pointsDiff >= 0 ? '+$pointsDiff RP' : '$pointsDiff RP';
@@ -506,6 +515,10 @@ class _ResultScreenState extends ConsumerState<ResultScreen> {
           ),
           const SizedBox(height: 20),
           RankProgressBar(rank: rankUpdate.newRank, subRank: rankUpdate.newSubRank, points: rankUpdate.newPoints),
+          if (user != null && user.rankProtectionMatches > 0) ...[
+            const SizedBox(height: 12),
+            RankProtectionStatus(remainingMatches: user.rankProtectionMatches),
+          ],
         ],
       ),
     );

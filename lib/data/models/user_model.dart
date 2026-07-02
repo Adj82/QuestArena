@@ -23,6 +23,11 @@ class UserModel {
   final int arenaBreakerWins;
   final int arenaBreakerLosses;
   final double averageAccuracy;
+  final int oneOptionLifelines;
+  final int twoOptionLifelines;
+  final int rankProtectionMatches;
+  final bool rankProtectionActive;
+  final int ownedShieldPackage;
 
   UserModel({
     required this.uid,
@@ -47,6 +52,11 @@ class UserModel {
     this.arenaBreakerWins = 0,
     this.arenaBreakerLosses = 0,
     this.averageAccuracy = 0.0,
+    this.oneOptionLifelines = 0,
+    this.twoOptionLifelines = 0,
+    this.rankProtectionMatches = 0,
+    this.rankProtectionActive = false,
+    this.ownedShieldPackage = 0,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -75,6 +85,11 @@ class UserModel {
       arenaBreakerWins: json['arenaBreakerWins'] ?? 0,
       arenaBreakerLosses: json['arenaBreakerLosses'] ?? 0,
       averageAccuracy: (json['averageAccuracy'] ?? 0.0).toDouble(),
+      oneOptionLifelines: json['oneOptionLifelines'] ?? 0,
+      twoOptionLifelines: json['twoOptionLifelines'] ?? 0,
+      rankProtectionMatches: json['rankProtectionMatches'] ?? 0,
+      rankProtectionActive: json['rankProtectionActive'] ?? false,
+      ownedShieldPackage: json['ownedShieldPackage'] ?? 0,
     );
   }
 
@@ -103,6 +118,11 @@ class UserModel {
         'arenaBreakerWins': arenaBreakerWins,
         'arenaBreakerLosses': arenaBreakerLosses,
         'averageAccuracy': averageAccuracy,
+        'oneOptionLifelines': oneOptionLifelines,
+        'twoOptionLifelines': twoOptionLifelines,
+        'rankProtectionMatches': rankProtectionMatches,
+        'rankProtectionActive': rankProtectionActive,
+        'ownedShieldPackage': ownedShieldPackage,
       };
 
   UserModel copyWith({
@@ -127,6 +147,11 @@ class UserModel {
     int? arenaBreakerLosses,
     double? averageAccuracy,
     bool clearSubRank = false,
+    int? oneOptionLifelines,
+    int? twoOptionLifelines,
+    int? rankProtectionMatches,
+    bool? rankProtectionActive,
+    int? ownedShieldPackage,
   }) {
     return UserModel(
       uid: uid,
@@ -151,6 +176,12 @@ class UserModel {
       arenaBreakerWins: arenaBreakerWins ?? this.arenaBreakerWins,
       arenaBreakerLosses: arenaBreakerLosses ?? this.arenaBreakerLosses,
       averageAccuracy: averageAccuracy ?? this.averageAccuracy,
+      oneOptionLifelines: oneOptionLifelines ?? this.oneOptionLifelines,
+      twoOptionLifelines: twoOptionLifelines ?? this.twoOptionLifelines,
+      rankProtectionMatches:
+          rankProtectionMatches ?? this.rankProtectionMatches,
+      rankProtectionActive: rankProtectionActive ?? this.rankProtectionActive,
+      ownedShieldPackage: ownedShieldPackage ?? this.ownedShieldPackage,
     );
   }
 }

@@ -14,6 +14,7 @@ import '../../data/models/game_room_model.dart';
 import '../../core/utils/game_utils.dart';
 import '../widgets/smart_avatar.dart';
 import '../widgets/neon_swirl_background.dart';
+import '../widgets/lifeline_button.dart';
 import 'result_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
@@ -30,7 +31,7 @@ class _GameScreenState extends ConsumerState<GameScreen>
   String? _selectedAnswer;
   bool _hasAnswered = false;
   List<String> _shuffledOptions = [];
-  List<String> _fiftyFiftyHiddenOptions = [];
+  List<String> _hiddenOptions = [];
   int _lastQuestionIndex = -1;
   String? _lastABQuestionText;
   int _lastABRound = 0;
@@ -38,6 +39,8 @@ class _GameScreenState extends ConsumerState<GameScreen>
   bool _isActivatingShield = false;
   bool _isRevealingTimeoutAnswer = false;
   int? _timeoutRevealQuestionIndex;
+  bool _hasUsedOneOptionLifeline = false;
+  bool _hasUsedTwoOptionLifeline = false;
 
   // Heartbeat & Timer state
   Timer? _heartbeatTimer;
@@ -269,6 +272,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
           _fiftyFiftyHiddenOptions = [];
           _isRevealingTimeoutAnswer = false;
           _timeoutRevealQuestionIndex = null;
+          _hiddenOptions = [];
+          _hasUsedOneOptionLifeline = false;
+          _hasUsedTwoOptionLifeline = false;
         });
         _syncState(); // Immediate sync for new Q
       }
@@ -410,6 +416,21 @@ class _GameScreenState extends ConsumerState<GameScreen>
                   style: AppTextStyles.label.copyWith(color: AppColors.gold),
                   textAlign: TextAlign.center,
                 ).animate().fadeIn().shake(hz: 2),
+            Text(GameUtils.decodeHtmlEntities(question['question']), 
+                style: AppTextStyles.headline, textAlign: TextAlign.center)
+                .animate(key: ValueKey(room.currentQuestionIndex))
+                .fadeIn(),
+            const SizedBox(height: 32),
+            ..._shuffledOptions
+                .where((opt) => !_hiddenOptions.contains(opt))
+                .map((opt) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: _AnswerButton(
+                text: GameUtils.decodeHtmlEntities(opt),
+                isSelected: _selectedAnswer == opt,
+                isCorrect: _hasAnswered && opt == question['correct_answer'],
+                isWrong: _hasAnswered && _selectedAnswer == opt && opt != question['correct_answer'],
+                onTap: () => _onAnswerSelected(opt),
               ),
           ],
         ),
@@ -485,12 +506,22 @@ class _GameScreenState extends ConsumerState<GameScreen>
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        _PowerupButton(
-          label: '50/50',
-          icon: Icons.filter_2_rounded,
-          isUsed: _hasUsedFiftyFifty,
+        LifelineButton(
+          label: 'Remove 1',
+          icon: Icons.exposure_minus_1,
+          count: user?.oneOptionLifelines ?? 0,
+          isUsed: _hasUsedOneOptionLifeline,
           isDisabled: _hasAnswered,
-          onTap: () => _useFiftyFifty(room),
+          onTap: () => _useLifeline(room, 'oneOption'),
+        ),
+        const SizedBox(width: 12),
+        LifelineButton(
+          label: 'Remove 2',
+          icon: Icons.exposure_minus_2,
+          count: user?.twoOptionLifelines ?? 0,
+          isUsed: _hasUsedTwoOptionLifeline,
+          isDisabled: _hasAnswered,
+          onTap: () => _useLifeline(room, 'twoOption'),
         ),
         const SizedBox(width: 12),
         _PowerupButton(
@@ -572,6 +603,45 @@ class _GameScreenState extends ConsumerState<GameScreen>
       _hasUsedFiftyFifty = true;
       _fiftyFiftyHiddenOptions = wrong.take(2).toList();
     });
+  void _useLifeline(GameRoomModel room, String type) async {
+    if (_hasAnswered) return;
+    if (type == 'oneOption' && _hasUsedOneOptionLifeline) return;
+    if (type == 'twoOption' && _hasUsedTwoOptionLifeline) return;
+
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return;
+
+    final count = type == 'oneOption' ? user.oneOptionLifelines : user.twoOptionLifelines;
+    if (count <= 0) return;
+
+    try {
+      await ref.read(gameRepositoryProvider).useLifeline(
+            userId: user.uid,
+            lifelineType: type,
+          );
+
+      final question = room.questions[room.currentQuestionIndex];
+      final availableWrong = _shuffledOptions
+          .where((o) => o != question['correct_answer'] && !_hiddenOptions.contains(o))
+          .toList()
+        ..shuffle();
+
+      setState(() {
+        if (type == 'oneOption') {
+          _hasUsedOneOptionLifeline = true;
+          if (availableWrong.isNotEmpty) {
+            _hiddenOptions.add(availableWrong.first);
+          }
+        } else {
+          _hasUsedTwoOptionLifeline = true;
+          _hiddenOptions.addAll(availableWrong.take(2));
+        }
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error using lifeline: $e')),
+      );
+    }
   }
 
   int _currentCorrectStreak(GameRoomModel room) {
