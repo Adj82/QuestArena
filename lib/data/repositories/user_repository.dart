@@ -83,6 +83,7 @@ class UserRepository {
     required int correctAnswers,
     required int totalQuestions,
     required int coinsGained,
+    bool rankProtectionActive = false,
   }) async {
     final userRef = FirebaseFirestore.instance.collection('users').doc(uid);
     MatchEndResult? result;
@@ -112,22 +113,26 @@ class UserRepository {
       bool rankProtectionUsed = false;
       int remainingRankProtection = user.rankProtectionMatches;
 
-      if (remainingRankProtection > 0 && (rankUpdate.pointsGained < 0 || rankUpdate.demoted)) {
-        rankProtectionUsed = true;
+      // If protection is active, we consume a match regardless of the outcome
+      // but only apply the "protection" effect if they would have lost points.
+      if (rankProtectionActive && remainingRankProtection > 0) {
         remainingRankProtection--;
         
-        // Reset rank update to original state
-        rankUpdate = RankUpdateResult(
-          oldRank: user.rank,
-          oldSubRank: user.subRank,
-          oldPoints: user.rankPoints,
-          newRank: user.rank,
-          newSubRank: user.subRank,
-          newPoints: user.rankPoints,
-          pointsGained: 0,
-          promoted: false,
-          demoted: false,
-        );
+        if (rankUpdate.pointsGained < 0 || rankUpdate.demoted) {
+          rankProtectionUsed = true;
+          // Reset rank update to original state (prevent loss)
+          rankUpdate = RankUpdateResult(
+            oldRank: user.rank,
+            oldSubRank: user.subRank,
+            oldPoints: user.rankPoints,
+            newRank: user.rank,
+            newSubRank: user.subRank,
+            newPoints: user.rankPoints,
+            pointsGained: 0,
+            promoted: false,
+            demoted: false,
+          );
+        }
       }
 
       final totalXp = user.xp + xpRewards.total;
@@ -177,6 +182,8 @@ class UserRepository {
         'arenaBreakerWins': abWins,
         'arenaBreakerLosses': abLosses,
         'rankProtectionMatches': remainingRankProtection,
+        'rankProtectionActive': false,
+        'ownedShieldPackage': remainingRankProtection > 0 ? user.ownedShieldPackage : 0,
       });
 
       result = MatchEndResult(
@@ -195,6 +202,7 @@ class UserRepository {
     required int xpGained,
     required int coinsGained,
     required bool isWin,
+    bool rankProtectionActive = false,
   }) async {
     await processMatchEnd(
       uid: uid,
@@ -203,6 +211,7 @@ class UserRepository {
       correctAnswers: 0,
       totalQuestions: 0,
       coinsGained: coinsGained,
+      rankProtectionActive: rankProtectionActive,
     );
   }
 

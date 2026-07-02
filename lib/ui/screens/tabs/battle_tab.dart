@@ -5,6 +5,7 @@ import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/matchmaking_providers.dart';
+import '../../../providers/shop_provider.dart';
 import '../../../data/models/matchmaking_model.dart';
 import '../../widgets/category_picker_sheet.dart';
 import '../../widgets/neon_swirl_background.dart';
@@ -49,8 +50,51 @@ class _BattleTabState extends ConsumerState<BattleTab> with TickerProviderStateM
     }
   }
 
+  Future<void> _confirmToggle(bool newValue) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.cardBg,
+        title: Text(
+          newValue ? 'ACTIVATE SHIELD?' : 'DEACTIVATE SHIELD?',
+          style: AppTextStyles.headline.copyWith(color: Colors.white, fontSize: 18),
+        ),
+        content: Text(
+          newValue
+              ? 'Use 1 rank protection match for the next match?'
+              : 'Rank points will be deducted normally if you lose.',
+          style: AppTextStyles.bodyMd.copyWith(color: AppColors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('CANCEL', style: AppTextStyles.label.copyWith(color: AppColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: newValue ? AppColors.neonViolet : AppColors.red,
+            ),
+            child: Text(
+              newValue ? 'ACTIVATE' : 'DEACTIVATE',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      ref.read(shopControllerProvider.notifier).toggleRankProtection(newValue);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    final user = ref.watch(currentUserProvider).value;
+    final isProtectionActive = user?.rankProtectionActive ?? false;
+    final hasShields = (user?.rankProtectionMatches ?? 0) > 0;
+
     return Scaffold(
       backgroundColor: AppColors.bgBase,
       body: NeonSwirlBackground(
@@ -61,8 +105,32 @@ class _BattleTabState extends ConsumerState<BattleTab> with TickerProviderStateM
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('BATTLE HUB', style: AppTextStyles.display),
-                Text('Select your challenge', style: AppTextStyles.label),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('BATTLE HUB', style: AppTextStyles.display),
+                        Text('Select your challenge', style: AppTextStyles.label),
+                      ],
+                    ),
+                    _RankProtectionToggle(
+                      isActive: isProtectionActive,
+                      onChanged: hasShields
+                          ? (val) => _confirmToggle(val)
+                          : (_) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('No rank protection shields available. Purchase one in the Shop!'),
+                                  backgroundColor: AppColors.neonPink,
+                                ),
+                              );
+                            },
+                      isEnabled: hasShields,
+                    ),
+                  ],
+                ),
                 
                 const SizedBox(height: 40),
                 
@@ -165,5 +233,43 @@ class _BattleModeCard extends StatelessWidget {
         ),
       ),
     ).animate().fadeIn().slideX(begin: 0.1, end: 0);
+  }
+}
+
+class _RankProtectionToggle extends StatelessWidget {
+  final bool isActive;
+  final ValueChanged<bool> onChanged;
+  final bool isEnabled;
+
+  const _RankProtectionToggle({
+    required this.isActive,
+    required this.onChanged,
+    this.isEnabled = true,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Opacity(
+          opacity: isEnabled ? 1.0 : 0.5,
+          child: Switch.adaptive(
+            value: isActive,
+            onChanged: onChanged,
+            activeColor: AppColors.neonViolet,
+            activeTrackColor: AppColors.neonViolet.withOpacity(0.3),
+          ),
+        ),
+        Text(
+          'SHIELD: ${isActive ? 'ON' : 'OFF'}',
+          style: AppTextStyles.label.copyWith(
+            color: isActive ? AppColors.neonViolet : AppColors.textMuted,
+            fontSize: 9,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1,
+          ),
+        ),
+      ],
+    );
   }
 }
