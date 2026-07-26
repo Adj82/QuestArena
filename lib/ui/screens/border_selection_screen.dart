@@ -90,54 +90,66 @@ class BorderSelectionScreen extends ConsumerWidget {
                         ),
                       ),
                       child: Stack(
+                        alignment: Alignment.center,
                         children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              BorderedAvatar(
-                                avatarUrl: user?.avatarUrl,
-                                rank: user?.rank,
-                                size: 80,
-                                borderId: border.id,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                border.name,
-                                style: TextStyle(
-                                  color: isUnlocked ? Colors.white : Colors.grey,
-                                  fontWeight: FontWeight.bold,
+                          Positioned.fill(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                BorderedAvatar(
+                                  avatarUrl: user?.avatarUrl,
+                                  rank: user?.rank,
+                                  size: 80,
+                                  borderId: border.id,
                                 ),
-                              ),
-                              if (!isUnlocked)
+                                const SizedBox(height: 12),
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                  padding: const EdgeInsets.symmetric(horizontal: 8),
                                   child: Text(
-                                    'Requires ${border.requiredLeague}',
-                                    style: const TextStyle(
-                                      color: Colors.grey,
-                                      fontSize: 10,
+                                    border.name,
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      color: isUnlocked ? Colors.white : Colors.grey,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 12,
                                     ),
                                   ),
                                 ),
-                            ],
+                                if (!isUnlocked)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 4, left: 8, right: 8),
+                                    child: Text(
+                                      'Requires ${border.requiredLeague}',
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.grey,
+                                        fontSize: 9,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                           if (!isUnlocked)
                             Positioned(
-                              top: 10,
-                              right: 10,
-                              child: Icon(Icons.lock, color: Colors.grey.withValues(alpha: 0.8), size: 20),
+                              top: 12,
+                              right: 12,
+                              child: Icon(Icons.lock_rounded, color: Colors.grey.withValues(alpha: 0.8), size: 18),
                             ),
                           if (isSelected)
                             const Positioned(
-                              top: 10,
-                              right: 10,
-                              child: Icon(Icons.check_circle, color: AppColors.gold, size: 20),
+                              top: 12,
+                              right: 12,
+                              child: Icon(Icons.check_circle_rounded, color: AppColors.gold, size: 20),
                             ),
                           if (!isUnlocked)
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.3),
-                                borderRadius: BorderRadius.circular(20),
+                            IgnorePointer(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.2),
+                                  borderRadius: BorderRadius.circular(20),
+                                ),
                               ),
                             ),
                         ],

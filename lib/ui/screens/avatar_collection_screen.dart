@@ -103,13 +103,16 @@ class _AvatarCard extends StatelessWidget {
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Stack(
               alignment: Alignment.center,
               children: [
-                Opacity(
-                  opacity: isUnlocked ? 1.0 : 0.4,
-                  child: SmartAvatar(avatarUrl: avatar.image, size: 80, showBorder: false),
+                SmartAvatar(
+                  avatarUrl: avatar.image,
+                  size: 80,
+                  showBorder: isSelected,
+                  isLocked: !isUnlocked,
                 ),
                 if (!isUnlocked)
                   const Icon(Icons.lock_rounded, color: Colors.white70, size: 32),

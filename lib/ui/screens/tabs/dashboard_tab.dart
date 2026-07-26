@@ -206,7 +206,7 @@ class _WeeklyQuestsGrid extends ConsumerWidget {
             crossAxisCount: 3,
             crossAxisSpacing: 10,
             mainAxisSpacing: 10,
-            childAspectRatio: 0.85, // Optimized for "pixel perfect" fit on smaller devices
+            childAspectRatio: 0.9, // Optimized for "pixel perfect" fit on all devices
           ),
           itemCount: 6,
           itemBuilder: (context, index) {
