@@ -1,6 +1,7 @@
-# Task Checklist: QuestArena Diagnostics & Fixes
+# Task Checklist: Deploy to Vercel
 
-- [x] `[x]` Center align icons and text in Border Selection cards
-- [x] `[x]` Enforce centering in `BorderedAvatar` and `SmartAvatar`
-- [x] `[x]` Audit and fix alignment in Avatar Selection and Collection screens
-- [x] `[x]` Final verification and cleanup
+- [x] `[x]` Run Flutter Web Build
+- [x] `[x]` Verify Build Output
+- [x] `[x]` Configure Vercel Deployment
+- [x] `[x]` Execute Vercel Deployment
+- [x] `[x]` Final verification and Walkthrough

@@ -1,31 +1,31 @@
-# Implementation Plan - Center Alignment Fix for Border Selection Cards
+# Implementation Plan - Deploy to Vercel
 
-Fix the layout of the "Change Border" screen to ensure all avatars and labels are perfectly centered within their cards.
+This plan outlines the steps to build the Flutter web application and deploy it to Vercel.
 
 ## User Review Required
 
 > [!IMPORTANT]
-> The alignment issues are caused by the interaction between `Stack` and `Column` inside the `GridView`. I will wrap the content in centering widgets and ensure the selection/lock icons are correctly positioned as overlays without affecting the center alignment of the primary content.
+> **Vercel Authentication**: Deploying to Vercel requires a Vercel account and authentication. If you haven't logged in via the CLI before, the deployment command may pause and require you to authenticate in your browser.
+>
+> **Web Build**: I will be running `flutter build web --release`. This might take a few minutes depending on the project size.
 
 ## Proposed Changes
 
-### [UI Components]
+### [Build & Deployment]
 
-#### [MODIFY] [border_selection_screen.dart](file:///C:/QuestArena/lib/ui/screens/border_selection_screen.dart)
-- Wrap the main `Column` (Avatar + Text) in a `Center` widget within the `Stack`.
-- Set `crossAxisAlignment: CrossAxisAlignment.center` and `mainAxisAlignment: MainAxisAlignment.center` for the `Column`.
-- Ensure the `Stack` itself has `alignment: Alignment.center`.
+#### [ACTION] Build Web Application
+- Run `flutter build web --release` to generate the static files in `build/web`.
 
-#### [MODIFY] [bordered_avatar.dart](file:///C:/QuestArena/lib/ui/widgets/bordered_avatar.dart)
-- Verify `Stack(alignment: Alignment.center, ...)` is present to keep the `SmartAvatar` centered inside the border image.
+#### [ACTION] Vercel Configuration
+- I will ensure the `vercel.json` is correctly configured to serve the `build/web` directory as a Single Page Application (SPA).
+- I will update the `vercel.json` to point the `public` directory (or equivalent) to `build/web` if needed, although usually, it's easier to run `vercel` from within that directory or specify it in the command.
 
-#### [MODIFY] [smart_avatar.dart](file:///C:/QuestArena/lib/ui/widgets/smart_avatar.dart)
-- Ensure the `SizedBox` wrapping the `SmartAvatar` build output uses `Alignment.center`.
+#### [ACTION] Deployment
+- Run `npx vercel --prod` to deploy the production build.
+- I will use the `--yes` flag to skip interactive prompts if possible, but the first-time setup might still require your input.
 
 ## Verification Plan
 
 ### Manual Verification
-- Open the **Border Selection** screen.
-- Verify that every avatar (with or without a border) is exactly in the center of its card.
-- Verify that the text label ("Gold Border", "None", etc.) is centered horizontally below the avatar.
-- Ensure the lock icon stays in the top-right corner without shifting the avatar.
+- Once the deployment is complete, Vercel will provide a URL (e.g., `questarena.vercel.app`).
+- I will provide this link for you to verify the live application.
