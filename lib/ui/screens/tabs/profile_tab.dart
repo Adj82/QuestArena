@@ -215,7 +215,7 @@ class _ProfileTabState extends ConsumerState<ProfileTab> with SingleTickerProvid
             physics: const NeverScrollableScrollPhysics(),
             mainAxisSpacing: 16,
             crossAxisSpacing: 16,
-            childAspectRatio: 1.05, // Further reduced from 1.15 to ensure absolute pixel-perfect safety
+            childAspectRatio: 1.1, // Adjusted for absolute pixel-perfect safety across all screens
             children: [
               _StatItem(icon: Icons.military_tech_rounded, label: 'LEVEL', value: '${user.level}', color: AppColors.purple),
               _StatItem(icon: Icons.stars_rounded, label: 'TOTAL XP', value: '${user.xp}', color: AppColors.neonViolet),

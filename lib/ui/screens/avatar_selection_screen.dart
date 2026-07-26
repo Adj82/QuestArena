@@ -43,11 +43,12 @@ class AvatarSelectionScreen extends ConsumerWidget {
               Expanded(
                 child: GridView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                  cacheExtent: 600, // Pre-render items for smoother scrolling
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                     crossAxisCount: 3,
                     crossAxisSpacing: 16,
                     mainAxisSpacing: 24,
-                    childAspectRatio: 0.72,
+                    childAspectRatio: 0.75, // Optimized for better vertical breathing room
                   ),
                   itemCount: AppAvatars.avatars.length,
                   itemBuilder: (context, index) {
@@ -60,7 +61,7 @@ class AvatarSelectionScreen extends ConsumerWidget {
                       isUnlocked: isUnlocked,
                       isSelected: isSelected,
                       onTap: () => _onAvatarTap(context, ref, user, avatar, isUnlocked),
-                    ).animate().fadeIn(delay: (index * 20).ms).slideY(begin: 0.1, end: 0, delay: (index * 20).ms);
+                    );
                   },
                 ),
               ),
@@ -189,11 +190,11 @@ class AvatarSelectionScreen extends ConsumerWidget {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              ClipOval(
-                child: ColorFiltered(
-                  colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.saturation),
-                  child: CachedNetworkImage(imageUrl: avatar.image, width: 100, height: 100, fit: BoxFit.cover),
-                ),
+              SmartAvatar(
+                avatarUrl: avatar.image,
+                size: 100,
+                isLocked: true,
+                showBorder: true,
               ),
               const SizedBox(height: 20),
               Text(
@@ -233,40 +234,43 @@ class _AvatarGridTile extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           Expanded(
             child: Stack(
               alignment: Alignment.center,
               children: [
-                // Animated Selection Border
-                if (isSelected)
-                  _buildAvatarImage()
-                      .animate(onPlay: (controller) => controller.repeat(reverse: true))
-                      .custom(
-                        duration: 1.5.seconds,
-                        builder: (context, value, child) {
-                          return Container(
-                            padding: const EdgeInsets.all(2),
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppColors.gold.withValues(alpha: 0.5 + (0.5 * (value - 0.5).abs())),
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppColors.gold.withValues(alpha: 0.2 * value),
-                                  blurRadius: 10 * value,
-                                  spreadRadius: 2 * value,
-                                ),
-                              ],
-                            ),
-                            child: child,
-                          );
-                        },
-                      )
-                else
-                  _buildAvatarImage(),
+                // Animated Selection Border or Standard Avatar
+                SmartAvatar(
+                  avatarUrl: avatar.image,
+                  size: 80,
+                  isLocked: !isUnlocked,
+                  showBorder: isSelected,
+                  showGlow: isSelected,
+                ).animate(target: isSelected ? 1 : 0).custom(
+                  duration: 1.5.seconds,
+                  builder: (context, value, child) {
+                    if (!isSelected) return child!;
+                    return Container(
+                      padding: const EdgeInsets.all(2),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: AppColors.gold.withValues(alpha: 0.5 + (0.5 * (value - 0.5).abs())),
+                          width: 2,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.gold.withValues(alpha: 0.2 * value),
+                            blurRadius: 10 * value,
+                            spreadRadius: 2 * value,
+                          ),
+                        ],
+                      ),
+                      child: child,
+                    );
+                  },
+                ),
                 
                 // Selection Checkmark
                 if (isSelected)
@@ -304,41 +308,6 @@ class _AvatarGridTile extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildAvatarImage() {
-    return Container(
-      decoration: const BoxDecoration(
-        shape: BoxShape.circle,
-        color: AppColors.surface,
-      ),
-      child: ClipOval(
-        child: Stack(
-          children: [
-            CachedNetworkImage(
-              imageUrl: avatar.image,
-              fit: BoxFit.cover,
-              width: 80,
-              height: 80,
-              color: isUnlocked ? null : Colors.grey,
-              colorBlendMode: isUnlocked ? null : BlendMode.saturation,
-            ),
-            if (!isUnlocked)
-              Positioned.fill(
-                child: ClipOval(
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 1.0, sigmaY: 1.0),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.4),
-                      child: const Icon(Icons.lock_rounded, color: Colors.white70, size: 20),
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
       ),
     );
   }

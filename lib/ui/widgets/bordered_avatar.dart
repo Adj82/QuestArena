@@ -25,41 +25,46 @@ class BorderedAvatar extends ConsumerWidget {
     final effectiveBorderId = borderId ?? ref.watch(selectedBorderProvider);
     final border = AppBorders.getBorderById(effectiveBorderId);
 
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        // The Avatar
-        SmartAvatar(
-          avatarUrl: avatarUrl,
-          rank: rank,
-          size: size * 0.85, // Slightly smaller to fit inside border
-          showGlow: showGlow,
-          showBorder: border.id == 'no_border',
-        ),
-        
-        // The Border
-        if (border.id != 'no_border')
-          SizedBox(
-            width: size,
-            height: size,
-            child: Image.asset(
-              border.image,
-              fit: BoxFit.contain,
-              errorBuilder: (context, error, stackTrace) {
-                // Fallback if asset is missing: Draw a simple colored ring
-                return Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    border: Border.all(
-                      color: _getBorderColor(border.requiredLeague),
-                      width: size * 0.08,
-                    ),
-                  ),
-                );
-              },
-            ),
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // The Avatar
+          SmartAvatar(
+            avatarUrl: avatarUrl,
+            rank: rank,
+            size: size * 0.82, // Optimized for centered fit
+            showGlow: showGlow,
+            showBorder: border.id == 'no_border',
           ),
-      ],
+          
+          // The Border
+          if (border.id != 'no_border')
+            IgnorePointer(
+              child: Image.asset(
+                border.image,
+                width: size,
+                height: size,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: _getBorderColor(border.requiredLeague),
+                        width: size * 0.08,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 
