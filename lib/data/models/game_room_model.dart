@@ -35,6 +35,12 @@ class GameRoomModel {
   final Map<String, dynamic> presence;
   final String? forfeitWinnerId;
   final String? guildBattleId;
+  final String? guildAId;
+  final String? guildBId;
+  final int guildAScore;
+  final int guildBScore;
+  final Map<String, dynamic> guildAPlayers; // uid -> player_data
+  final Map<String, dynamic> guildBPlayers; // uid -> player_data
 
   GameRoomModel({
     required this.roomId,
@@ -64,6 +70,12 @@ class GameRoomModel {
     this.presence = const {},
     this.forfeitWinnerId,
     this.guildBattleId,
+    this.guildAId,
+    this.guildBId,
+    this.guildAScore = 0,
+    this.guildBScore = 0,
+    this.guildAPlayers = const {},
+    this.guildBPlayers = const {},
   });
 
   factory GameRoomModel.fromJson(Map<String, dynamic> json) {
@@ -105,6 +117,12 @@ class GameRoomModel {
       presence: Map<String, dynamic>.from(json['presence'] ?? {}),
       forfeitWinnerId: json['forfeitWinnerId'],
       guildBattleId: json['guildBattleId'],
+      guildAId: json['guildAId'],
+      guildBId: json['guildBId'],
+      guildAScore: json['guildAScore'] ?? 0,
+      guildBScore: json['guildBScore'] ?? 0,
+      guildAPlayers: Map<String, dynamic>.from(json['guildAPlayers'] ?? {}),
+      guildBPlayers: Map<String, dynamic>.from(json['guildBPlayers'] ?? {}),
     );
   }
 
@@ -136,6 +154,12 @@ class GameRoomModel {
     'presence': presence,
     'forfeitWinnerId': forfeitWinnerId,
     'guildBattleId': guildBattleId,
+    'guildAId': guildAId,
+    'guildBId': guildBId,
+    'guildAScore': guildAScore,
+    'guildBScore': guildBScore,
+    'guildAPlayers': guildAPlayers,
+    'guildBPlayers': guildBPlayers,
   };
 
   GameRoomModel copyWith({
@@ -158,6 +182,10 @@ class GameRoomModel {
     List<String>? rematchRequests,
     String? nextMatchId,
     String? forfeitWinnerId,
+    int? guildAScore,
+    int? guildBScore,
+    Map<String, dynamic>? guildAPlayers,
+    Map<String, dynamic>? guildBPlayers,
   }) {
     return GameRoomModel(
       roomId: roomId,
@@ -186,6 +214,13 @@ class GameRoomModel {
       arenaBreakerStatusMessage: arenaBreakerStatusMessage,
       presence: presence,
       forfeitWinnerId: forfeitWinnerId ?? this.forfeitWinnerId,
+      guildBattleId: guildBattleId ?? this.guildBattleId,
+      guildAId: guildAId ?? this.guildAId,
+      guildBId: guildBId ?? this.guildBId,
+      guildAScore: guildAScore ?? this.guildAScore,
+      guildBScore: guildBScore ?? this.guildBScore,
+      guildAPlayers: guildAPlayers ?? this.guildAPlayers,
+      guildBPlayers: guildBPlayers ?? this.guildBPlayers,
     );
   }
 }

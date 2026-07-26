@@ -54,13 +54,13 @@ class _GuildMatchmakingScreenState extends ConsumerState<GuildMatchmakingScreen>
   void _startCountdown(GuildBattleMatchModel match) {
     if (_countdownTimer != null) return;
     
+    _secondsRemaining = 5;
     _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
-          final now = DateTime.now();
-          final diff = match.startTime.difference(now).inSeconds;
-          _secondsRemaining = diff > 0 ? diff : 0;
-          if (_secondsRemaining <= 0) {
+          if (_secondsRemaining > 0) {
+            _secondsRemaining--;
+          } else {
             timer.cancel();
             _enterMatch();
           }
@@ -114,9 +114,22 @@ class _GuildMatchmakingScreenState extends ConsumerState<GuildMatchmakingScreen>
                       loading: () => const Center(child: CircularProgressIndicator()),
                       error: (e, s) => Center(child: Text('Error: $e')),
                       data: (match) {
-                        if (match != null && match.status == GuildBattleStatus.matched) {
-                          _startCountdown(match);
-                          return _buildMatchFoundView(guild, match);
+                        if (match != null) {
+                          if (match.status == GuildBattleStatus.matched) {
+                             _startCountdown(match);
+                             return _buildMatchFoundView(guild, match);
+                          }
+                          
+                          if (match.status == GuildBattleStatus.live) {
+                             // If it's already live, navigate into it or show a different view
+                             // For now, let's auto-enter if matched but we somehow missed the countdown
+                             _enterMatch();
+                             return const Center(child: CircularProgressIndicator(color: AppColors.teal));
+                          }
+                          
+                          if (match.status == GuildBattleStatus.completed || match.status == GuildBattleStatus.cancelled) {
+                             return const Center(child: Text('Match has ended.'));
+                          }
                         }
                         
                         return _buildLobbyView(guild, isLeader, isReady, canStart);
@@ -304,8 +317,16 @@ class _GuildMatchmakingScreenState extends ConsumerState<GuildMatchmakingScreen>
           children: [
              Text(
               _secondsRemaining > 0 ? '$_secondsRemaining' : 'GO!',
-              style: AppTextStyles.display.copyWith(fontSize: 80, color: Colors.white),
-            ).animate(key: ValueKey(_secondsRemaining)).scale(duration: 300.ms, begin: const Offset(0.5, 0.5), end: const Offset(1, 1)).fadeIn(),
+              style: AppTextStyles.display.copyWith(
+                fontSize: 100, 
+                color: _secondsRemaining > 0 ? Colors.white : AppColors.teal,
+                fontWeight: FontWeight.w900,
+              ),
+            ).animate(key: ValueKey(_secondsRemaining))
+             .scale(duration: 400.ms, begin: const Offset(0.4, 0.4), end: const Offset(1.1, 1.1), curve: Curves.elasticOut)
+             .fadeIn(duration: 200.ms)
+             .then(delay: 600.ms)
+             .fadeOut(duration: 200.ms),
           ],
         ),
         const SizedBox(height: 16),

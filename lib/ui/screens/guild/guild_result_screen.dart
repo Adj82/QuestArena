@@ -204,9 +204,11 @@ class _GuildResultScreenState extends ConsumerState<GuildResultScreen> {
 
       const shareMessage = "My guild just dominated in QuestArena! 🛡️🔥\nJoin us and climb the ranks!\n\n🎮 Play now:\nhttps://quest-arena-self.vercel.app/";
 
-      await Share.shareXFiles(
-        [XFile.fromData(image, name: 'guild_victory.png', mimeType: 'image/png')],
-        text: shareMessage,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile.fromData(image, name: 'guild_victory.png', mimeType: 'image/png')],
+          text: shareMessage,
+        ),
       );
     } catch (e) {
       if (mounted) {

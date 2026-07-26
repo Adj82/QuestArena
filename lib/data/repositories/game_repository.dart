@@ -132,78 +132,147 @@ class GameRepository {
 
       final data = snapshot.data();
       if (data == null) return;
-      final playerKey = 'player$playerNumber';
+      
+      final isGuildBattle = data['guildBattleId'] != null;
       final currentIdx = data['currentQuestionIndex'] ?? 0;
       final questions = List<dynamic>.from(data['questions'] ?? []);
 
-      final playerAnswers = List<String>.from(data[playerKey]['answers'] ?? []);
+      if (isGuildBattle) {
+        final Map<String, dynamic> updatedData = Map<String, dynamic>.from(data);
+        updatedData['guildAPlayers'] = Map<String, dynamic>.from(data['guildAPlayers'] ?? {});
+        updatedData['guildBPlayers'] = Map<String, dynamic>.from(data['guildBPlayers'] ?? {});
 
-      while (playerAnswers.length < currentIdx) {
-        playerAnswers.add("TIMEOUT");
-      }
+        final Map<String, dynamic> guildAPlayers = updatedData['guildAPlayers'];
+        final Map<String, dynamic> guildBPlayers = updatedData['guildBPlayers'];
+        
+        bool isGuildA = guildAPlayers.containsKey(userId);
+        final playerMap = isGuildA ? guildAPlayers : guildBPlayers;
+        final playerData = Map<String, dynamic>.from(playerMap[userId] ?? {});
+        
+        final playerAnswers = List<String>.from(playerData['answers'] ?? []);
+        if (playerAnswers.length == currentIdx) {
+          playerAnswers.add(answer);
+          playerData['answers'] = playerAnswers;
+          
+          final isCorrect = answer == questions[currentIdx]['correct_answer'];
+          if (isCorrect) {
+            playerData['score'] = (playerData['score'] ?? 0) + 1; // 1 point per correct answer for guild battle logic
+            final guildScoreKey = isGuildA ? 'guildAScore' : 'guildBScore';
+            transaction.update(roomRef, {
+              guildScoreKey: FieldValue.increment(1),
+            });
+            updatedData[guildScoreKey] = (updatedData[guildScoreKey] ?? 0) + 1;
+          }
+          
+          final guildPlayersKey = isGuildA ? 'guildAPlayers' : 'guildBPlayers';
+          transaction.update(roomRef, {
+            '$guildPlayersKey.$userId': playerData,
+          });
 
-      if (playerAnswers.length == currentIdx) {
-        playerAnswers.add(answer);
-        final player1 = data['player1'];
-        final player2 = data['player2'];
-        final opponentId = playerNumber == 1
-            ? (player2 == null ? null : player2['uid'])
-            : (player1 == null ? null : player1['uid']);
-        final powerups = Map<String, dynamic>.from(data['powerups'] ?? {});
-        final shieldBlocks = Map<String, dynamic>.from(
-          powerups['shieldBonusBlocks'] ?? {},
-        );
-        final opponentShield = opponentId == null
-            ? null
-            : Map<String, dynamic>.from(shieldBlocks[opponentId] ?? {});
-        final shieldBlocksBonus = opponentShield?['questionIndex'] == currentIdx;
-        final effectiveScore =
-            shieldBlocksBonus && scoreIncrement > 10 ? 10 : scoreIncrement;
-        final newScore = (data[playerKey]['score'] ?? 0) + effectiveScore;
+          updatedData[guildPlayersKey][userId] = playerData; // Local update for the check below
+          
+          bool allAnswered = true;
+          for (final p in (updatedData['guildAPlayers'] as Map).values) {
+            if ((p['answers'] as List).length <= currentIdx) { allAnswered = false; break; }
+          }
+          if (allAnswered) {
+             for (final p in (updatedData['guildBPlayers'] as Map).values) {
+               if ((p['answers'] as List).length <= currentIdx) { allAnswered = false; break; }
+             }
+          }
 
-        transaction.update(roomRef, {
-          '$playerKey.answers': playerAnswers,
-          '$playerKey.score': newScore,
-        });
-      }
+          if (allAnswered) {
+            _advanceOrFinishInTransaction(transaction, roomRef, updatedData, currentIdx, questions);
+          }
+        }
+      } else {
+        // ORIGINAL 1v1 LOGIC
+        final playerKey = 'player$playerNumber';
+        final playerAnswers = List<String>.from(data[playerKey]['answers'] ?? []);
 
-      final p1Len = playerNumber == 1 ? playerAnswers.length : (data['player1']['answers'] as List).length;
-      final p2Len = playerNumber == 2 ? playerAnswers.length : (data['player2']['answers'] as List).length;
+        while (playerAnswers.length < currentIdx) {
+          playerAnswers.add("TIMEOUT");
+        }
 
-      if (p1Len > currentIdx && p2Len > currentIdx) {
-        _advanceOrFinishInTransaction(transaction, roomRef, data, currentIdx, questions);
+        if (playerAnswers.length == currentIdx) {
+          playerAnswers.add(answer);
+          final player1 = data['player1'];
+          final player2 = data['player2'];
+          final opponentId = playerNumber == 1
+              ? (player2 == null ? null : player2['uid'])
+              : (player1 == null ? null : player1['uid']);
+          final powerups = Map<String, dynamic>.from(data['powerups'] ?? {});
+          final shieldBlocks = Map<String, dynamic>.from(
+            powerups['shieldBonusBlocks'] ?? {},
+          );
+          final opponentShield = opponentId == null
+              ? null
+              : Map<String, dynamic>.from(shieldBlocks[opponentId] ?? {});
+          final shieldBlocksBonus = opponentShield?['questionIndex'] == currentIdx;
+          final effectiveScore =
+              shieldBlocksBonus && scoreIncrement > 10 ? 10 : scoreIncrement;
+          final newScore = (data[playerKey]['score'] ?? 0) + effectiveScore;
+
+          transaction.update(roomRef, {
+            '$playerKey.answers': playerAnswers,
+            '$playerKey.score': newScore,
+          });
+          
+          // Local update for the check below
+          final updatedData = Map<String, dynamic>.from(data);
+          updatedData[playerKey]['answers'] = playerAnswers;
+          
+          final p1Len = playerNumber == 1 ? playerAnswers.length : (data['player1']['answers'] as List).length;
+          final p2Len = playerNumber == 2 ? playerAnswers.length : (data['player2']['answers'] as List).length;
+
+          if (p1Len > currentIdx && p2Len > currentIdx) {
+            _advanceOrFinishInTransaction(transaction, roomRef, updatedData, currentIdx, questions);
+          }
+        }
       }
     });
   }
 
   void _advanceOrFinishInTransaction(Transaction transaction, DocumentReference roomRef, Map<String, dynamic> data, int currentIdx, List<dynamic> questions) {
+    final isGuildBattle = data['guildBattleId'] != null;
+
     if (currentIdx + 1 < questions.length) {
       transaction.update(roomRef, {
         'currentQuestionIndex': currentIdx + 1,
         'questionStartedAt': FieldValue.serverTimestamp(),
       });
     } else {
-      final p1 = data['player1'];
-      final p2 = data['player2'];
-      final p1Score = p1['score'] ?? 0;
-      final p2Score = p2['score'] ?? 0;
-
-      if (p1Score == p2Score) {
-        transaction.update(roomRef, {
-          'status': 'arena_breaker',
-          'isArenaBreaker': true,
-          'arenaBreakerRound': 1,
-          'questionStartedAt': FieldValue.serverTimestamp(),
-          'arenaBreakerQuestion': null,
-          'arenaBreakerSubmissions': {},
-          'arenaBreakerStatusMessage': 'Preparing Sudden Death...',
-        });
-        _fetchArenaBreakerQuestion(roomRef.id, 1, categoryId: data['categoryId']);
-      } else {
+      if (isGuildBattle) {
+        final scoreA = data['guildAScore'] ?? 0;
+        final scoreB = data['guildBScore'] ?? 0;
+        
         transaction.update(roomRef, {
           'status': 'finished',
-          'winnerId': p1Score > p2Score ? p1['uid'] : p2['uid'],
+          'winnerId': scoreA > scoreB ? 'guildA' : (scoreB > scoreA ? 'guildB' : 'draw'),
         });
+      } else {
+        final p1 = data['player1'];
+        final p2 = data['player2'];
+        final p1Score = p1['score'] ?? 0;
+        final p2Score = p2['score'] ?? 0;
+
+        if (p1Score == p2Score) {
+          transaction.update(roomRef, {
+            'status': 'arena_breaker',
+            'isArenaBreaker': true,
+            'arenaBreakerRound': 1,
+            'questionStartedAt': FieldValue.serverTimestamp(),
+            'arenaBreakerQuestion': null,
+            'arenaBreakerSubmissions': {},
+            'arenaBreakerStatusMessage': 'Preparing Sudden Death...',
+          });
+          _fetchArenaBreakerQuestion(roomRef.id, 1, categoryId: data['categoryId']);
+        } else {
+          transaction.update(roomRef, {
+            'status': 'finished',
+            'winnerId': p1Score > p2Score ? p1['uid'] : p2['uid'],
+          });
+        }
       }
     }
   }
@@ -256,8 +325,32 @@ class GameRepository {
       final status = data['status'];
 
       if (status == 'active' && currentIdx == fromIndex) {
+        final isGuildBattle = data['guildBattleId'] != null;
         final questions = List<dynamic>.from(data['questions'] ?? []);
-        _advanceOrFinishInTransaction(transaction, roomRef, data, currentIdx, questions);
+
+        if (isGuildBattle) {
+          // Force TIMEOUT for all players who haven't answered
+          final Map<String, dynamic> guildAPlayers = Map<String, dynamic>.from(data['guildAPlayers'] ?? {});
+          final Map<String, dynamic> guildBPlayers = Map<String, dynamic>.from(data['guildBPlayers'] ?? {});
+          
+          void forceTimeout(Map<String, dynamic> players, String key) {
+            players.forEach((uid, pData) {
+              final playerAnswers = List<String>.from(pData['answers'] ?? []);
+              while (playerAnswers.length <= currentIdx) {
+                playerAnswers.add("TIMEOUT");
+              }
+              pData['answers'] = playerAnswers;
+            });
+            transaction.update(roomRef, {key: players});
+          }
+
+          forceTimeout(guildAPlayers, 'guildAPlayers');
+          forceTimeout(guildBPlayers, 'guildBPlayers');
+
+          _advanceOrFinishInTransaction(transaction, roomRef, data, currentIdx, questions);
+        } else {
+          _advanceOrFinishInTransaction(transaction, roomRef, data, currentIdx, questions);
+        }
       }
     });
   }
