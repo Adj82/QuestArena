@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/constants/colors.dart';
+import '../../core/utils/rank_system.dart';
 
 class RankBadge extends StatelessWidget {
   final String rank;
@@ -89,13 +90,6 @@ class RankBadge extends StatelessWidget {
   }
 
   IconData _getRankIcon(String rank) {
-    switch (rank) {
-      case 'Legend': return Icons.stars_rounded;
-      case 'Champion': return Icons.workspace_premium_rounded;
-      case 'Master': return Icons.military_tech_rounded;
-      case 'Platinum': return Icons.shield_rounded;
-      case 'Diamond': return Icons.diamond_rounded;
-      default: return Icons.emoji_events_rounded;
-    }
+    return RankSystem.getRankIcon(rank);
   }
 }

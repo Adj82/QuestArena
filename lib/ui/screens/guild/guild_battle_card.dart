@@ -7,7 +7,6 @@ import '../../../data/models/guild_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../../providers/guild_providers.dart';
 import '../../../providers/user_providers.dart';
-import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../game_screen.dart';
 import '../../widgets/category_picker_sheet.dart';
 import 'guild_matchmaking_screen.dart';
@@ -25,6 +24,7 @@ class _GuildBattleCardState extends ConsumerState<GuildBattleCard> {
   @override
   Widget build(BuildContext context) {
     final guildAsync = ref.watch(userGuildProvider);
+    final matchAsync = ref.watch(currentGuildBattleProvider);
     final user = ref.watch(currentUserProvider).value;
 
     return guildAsync.when(
@@ -33,23 +33,43 @@ class _GuildBattleCardState extends ConsumerState<GuildBattleCard> {
       data: (guild) {
         if (guild == null) return const SizedBox.shrink();
 
-        if (guild.battleStatus == GuildBattleStatus.completed) {
-           return _buildCompletedView(guild, user);
-        }
+        // 1. If we have a match, use its status as the primary source of truth
+        return matchAsync.when(
+          data: (match) {
+            // Match-based state overrides
+            if (match != null) {
+               final isFinalState = match.status == GuildBattleStatus.completed || 
+                                  match.status == GuildBattleStatus.cancelled;
+               
+               if (isFinalState) {
+                  return _buildLobbyView(user);
+               }
 
-        switch (guild.battleStatus) {
-          case GuildBattleStatus.idle:
-            return _buildLobbyView(user);
-          case GuildBattleStatus.readyCheck:
-          case GuildBattleStatus.searching:
-          case GuildBattleStatus.matchmaking:
-          case GuildBattleStatus.matched:
-            return _buildMatchmakingInProgressView();
-          case GuildBattleStatus.live:
-            return _buildLiveBattleView(guild);
-          default:
-            return _buildLobbyView(user);
-        }
+               if (match.status == GuildBattleStatus.live) {
+                  return _buildLiveBattleView(guild);
+               }
+            }
+
+            // 2. Fallback to Guild document status
+            switch (guild.battleStatus) {
+              case GuildBattleStatus.idle:
+              case GuildBattleStatus.completed:
+              case GuildBattleStatus.cancelled:
+                return _buildLobbyView(user);
+              case GuildBattleStatus.readyCheck:
+              case GuildBattleStatus.searching:
+              case GuildBattleStatus.matchmaking:
+              case GuildBattleStatus.matched:
+                return _buildMatchmakingInProgressView();
+              case GuildBattleStatus.live:
+                return _buildLiveBattleView(guild);
+              default:
+                return _buildLobbyView(user);
+            }
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, s) => _buildLobbyView(user),
+        );
       },
     );
   }

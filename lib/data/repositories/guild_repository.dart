@@ -215,45 +215,61 @@ class GuildRepository {
         transaction.update(g1Doc.reference, {
           'battleStatus': GuildBattleStatus.matched.name,
           'currentBattleId': matchId,
+          'readyPlayerUids': [],
         });
         transaction.update(g2Doc.reference, {
           'battleStatus': GuildBattleStatus.matched.name,
           'currentBattleId': matchId,
+          'readyPlayerUids': [],
         });
 
-        // 3. Setup individual Game Rooms for players
+        // 3. Setup a SINGLE Game Room for ALL participating players
         final questions = await _fetchMatchQuestions();
         
-        // Pair players (simplified: random pairs or just create a room for each pair)
-        // Since guilds might have different counts, we might need a more complex pairing.
-        // For now, let's assume we pair them up to the smaller count.
-        final minCount = g1.readyPlayerUids.length < g2.readyPlayerUids.length 
-            ? g1.readyPlayerUids.length 
-            : g2.readyPlayerUids.length;
+        final roomId = _db.collection('gameRooms').doc().id;
 
-        for (int i = 0; i < minCount; i++) {
-          final pA = g1.readyPlayerUids[i];
-          final pB = g2.readyPlayerUids[i];
-          final roomId = _db.collection('gameRooms').doc().id;
+        final Map<String, dynamic> guildAPlayersData = {};
+        final Map<String, dynamic> guildBPlayersData = {};
 
-          final pADoc = await _db.collection('users').doc(pA).get();
-          final pBDoc = await _db.collection('users').doc(pB).get();
-
-          transaction.set(_db.collection('gameRooms').doc(roomId), {
-            'roomId': roomId,
-            'status': 'active',
-            'isRanked': true,
-            'guildBattleId': matchId,
-            'guildAId': g1.id,
-            'guildBId': g2.id,
-            'player1': {...pADoc.data()!, 'score': 0, 'answers': [], 'isReady': true},
-            'player2': {...pBDoc.data()!, 'score': 0, 'answers': [], 'isReady': true},
-            'questions': questions,
-            'createdAt': FieldValue.serverTimestamp(),
-            'questionStartedAt': FieldValue.serverTimestamp(),
-            'currentQuestionIndex': 0,
-          });
+        for (final uid in g1.readyPlayerUids) {
+          final userDoc = await _db.collection('users').doc(uid).get();
+          guildAPlayersData[uid] = {
+            ...userDoc.data()!,
+            'score': 0,
+            'answers': [],
+            'isReady': true,
+          };
         }
+
+        for (final uid in g2.readyPlayerUids) {
+          final userDoc = await _db.collection('users').doc(uid).get();
+          guildBPlayersData[uid] = {
+            ...userDoc.data()!,
+            'score': 0,
+            'answers': [],
+            'isReady': true,
+          };
+        }
+
+        transaction.set(_db.collection('gameRooms').doc(roomId), {
+          'roomId': roomId,
+          'status': 'active',
+          'isRanked': true,
+          'guildBattleId': matchId,
+          'guildAId': g1.id,
+          'guildBId': g2.id,
+          'guildAPlayers': guildAPlayersData,
+          'guildBPlayers': guildBPlayersData,
+          // Fallback player1/player2 for old logic if needed, but we'll use guildAPlayers/guildBPlayers
+          'player1': guildAPlayersData.values.first, 
+          'player2': guildBPlayersData.values.first,
+          'questions': questions,
+          'createdAt': FieldValue.serverTimestamp(),
+          'questionStartedAt': FieldValue.serverTimestamp(),
+          'currentQuestionIndex': 0,
+          'guildAScore': 0,
+          'guildBScore': 0,
+        });
       });
     } catch (e) {
       debugPrint('Guild Match Creation Error: $e');
@@ -314,39 +330,52 @@ class GuildRepository {
         final String? oppMatchId = oppGuildDoc.data()?['currentBattleId'];
         if (oppMatchId == null) return;
 
-        // PAIR PLAYERS AND CREATE ROOMS
-        final List<String> playerAIds = myQueue.readyPlayerUids;
-        final List<String> playerBIds = List<String>.from(opponent.readyPlayerUids)..shuffle();
+        // 3. Setup a SINGLE Game Room for ALL participating players
+        final questions = await _fetchMatchQuestions();
+        
+        final roomId = _db.collection('gameRooms').doc().id;
 
-        final List<Map<String, dynamic>> questions = await _fetchMatchQuestions();
+        final Map<String, dynamic> guildAPlayersData = {};
+        final Map<String, dynamic> guildBPlayersData = {};
 
-        for (int i = 0; i < playerAIds.length; i++) {
-          final pA = playerAIds[i];
-          final pB = playerBIds[i];
-          final roomId = _db.collection('gameRooms').doc().id;
-
-          // Fetch player datas
-          final pADoc = await transaction.get(_db.collection('users').doc(pA));
-          final pBDoc = await transaction.get(_db.collection('users').doc(pB));
-
-          final pAData = pADoc.data()!;
-          final pBData = pBDoc.data()!;
-
-          transaction.set(_db.collection('gameRooms').doc(roomId), {
-            'roomId': roomId,
-            'status': 'active',
-            'isRanked': true,
-            'guildBattleId': myMatchId,
-            'guildAId': myQueue.guildId,
-            'guildBId': opponent.guildId,
-            'player1': {...pAData, 'score': 0, 'answers': [], 'isReady': true},
-            'player2': {...pBData, 'score': 0, 'answers': [], 'isReady': true},
-            'questions': questions,
-            'createdAt': FieldValue.serverTimestamp(),
-            'questionStartedAt': FieldValue.serverTimestamp(),
-            'currentQuestionIndex': 0,
-          });
+        for (final uid in myQueue.readyPlayerUids) {
+          final userDoc = await transaction.get(_db.collection('users').doc(uid));
+          guildAPlayersData[uid] = {
+            ...userDoc.data()!,
+            'score': 0,
+            'answers': [],
+            'isReady': true,
+          };
         }
+
+        for (final uid in opponent.readyPlayerUids) {
+          final userDoc = await transaction.get(_db.collection('users').doc(uid));
+          guildBPlayersData[uid] = {
+            ...userDoc.data()!,
+            'score': 0,
+            'answers': [],
+            'isReady': true,
+          };
+        }
+
+        transaction.set(_db.collection('gameRooms').doc(roomId), {
+          'roomId': roomId,
+          'status': 'active',
+          'isRanked': true,
+          'guildBattleId': myMatchId,
+          'guildAId': myQueue.guildId,
+          'guildBId': opponent.guildId,
+          'guildAPlayers': guildAPlayersData,
+          'guildBPlayers': guildBPlayersData,
+          'player1': guildAPlayersData.values.first,
+          'player2': guildBPlayersData.values.first,
+          'questions': questions,
+          'createdAt': FieldValue.serverTimestamp(),
+          'questionStartedAt': FieldValue.serverTimestamp(),
+          'currentQuestionIndex': 0,
+          'guildAScore': 0,
+          'guildBScore': 0,
+        });
 
         transaction.update(_db.collection('guildMatches').doc(myMatchId), {
           'guildBId': opponent.guildId,
@@ -356,7 +385,16 @@ class GuildRepository {
           'status': GuildBattleStatus.live.name,
         });
 
-        transaction.update(_db.collection('guilds').doc(opponent.guildId), {'currentBattleId': myMatchId});
+        transaction.update(_db.collection('guilds').doc(myQueue.guildId), {
+          'currentBattleId': myMatchId,
+          'readyPlayerUids': [],
+          'battleStatus': GuildBattleStatus.live.name,
+        });
+        transaction.update(_db.collection('guilds').doc(opponent.guildId), {
+          'currentBattleId': myMatchId,
+          'readyPlayerUids': [],
+          'battleStatus': GuildBattleStatus.live.name,
+        });
         transaction.delete(_db.collection('guildMatches').doc(oppMatchId));
         transaction.delete(_db.collection('guildBattleQueue').doc(myQueue.guildId));
         transaction.delete(_db.collection('guildBattleQueue').doc(opponent.guildId));
@@ -396,7 +434,8 @@ class GuildRepository {
     final match = GuildBattleMatchModel.fromJson(doc.data()!);
     final totalPlayers = match.guildAPlayers.length + match.guildBPlayers.length;
     
-    if (match.playerStatus.length == totalPlayers) {
+    // Finalize if all players finished OR if it's been a long time (timeout)
+    if (match.playerStatus.length >= totalPlayers) {
       finalizeBattle(matchId);
     }
   }
@@ -438,9 +477,21 @@ class GuildRepository {
         _updatePlayerGuildStats(transaction, uid, scoreB > scoreA, match.playerScores[uid] ?? 0);
       }
 
-      // Clear currentBattleId from guilds
-      transaction.update(_db.collection('guilds').doc(match.guildAId), {'currentBattleId': null});
-      transaction.update(_db.collection('guilds').doc(match.guildBId), {'currentBattleId': null});
+      // Clear currentBattleId and reset status for both guilds
+      transaction.update(_db.collection('guilds').doc(match.guildAId), {
+        'currentBattleId': null,
+        'battleStatus': GuildBattleStatus.idle.name,
+        'readyPlayerUids': [],
+        'selectedCategoryId': null,
+        'selectedCategoryName': null,
+      });
+      transaction.update(_db.collection('guilds').doc(match.guildBId), {
+        'currentBattleId': null,
+        'battleStatus': GuildBattleStatus.idle.name,
+        'readyPlayerUids': [],
+        'selectedCategoryId': null,
+        'selectedCategoryName': null,
+      });
 
       // Log results
       transaction.set(_db.collection('guildBattleResults').doc(matchId), {
@@ -493,6 +544,23 @@ class GuildRepository {
       }
     }
     return null;
+  }
+
+  Future<void> closeGuildMatch(String guildId, String matchId) async {
+    final guildRef = _db.collection('guilds').doc(guildId);
+    await _db.runTransaction((transaction) async {
+      final doc = await transaction.get(guildRef);
+      if (!doc.exists) return;
+      if (doc.data()?['currentBattleId'] == matchId) {
+        transaction.update(guildRef, {
+          'currentBattleId': null,
+          'battleStatus': GuildBattleStatus.idle.name,
+          'readyPlayerUids': [],
+          'selectedCategoryId': null,
+          'selectedCategoryName': null,
+        });
+      }
+    });
   }
 
   Future<void> updateSelectedCategory(String guildId, String categoryId, String categoryName) async {

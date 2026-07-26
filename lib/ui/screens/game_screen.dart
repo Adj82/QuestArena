@@ -7,13 +7,13 @@ import '../../core/constants/colors.dart';
 import '../../core/constants/text_styles.dart';
 import '../../providers/game_providers.dart';
 import '../../providers/user_providers.dart';
+import '../../providers/guild_providers.dart';
 import '../../data/models/game_room_model.dart';
 import '../../core/utils/game_utils.dart';
 import '../widgets/smart_avatar.dart';
 import '../widgets/neon_swirl_background.dart';
 import '../widgets/lifeline_button.dart';
 import 'result_screen.dart';
-import 'guild/guild_result_screen.dart';
 
 class GameScreen extends ConsumerStatefulWidget {
   final String roomId;
@@ -408,13 +408,32 @@ class _GameScreenState extends ConsumerState<GameScreen>
     );
   }
 
-  int _currentCorrectStreak(GameRoomModel room) {
+  Map<String, dynamic>? _getMyPlayerData(GameRoomModel room) {
     final user = ref.read(currentUserProvider).value;
-    if (user == null) return 0;
+    if (user == null) return null;
+    if (room.guildBattleId != null) {
+      return (room.guildAPlayers[user.uid] ?? room.guildBPlayers[user.uid]) as Map<String, dynamic>?;
+    }
+    return user.uid == room.player1['uid'] ? room.player1 : room.player2;
+  }
 
-    final isP1 = user.uid == room.player1['uid'];
-    final player = isP1 ? room.player1 : room.player2;
-    final answers = List<String>.from(player?['answers'] ?? []);
+  Map<String, dynamic>? _getOpponentPlayerData(GameRoomModel room) {
+    final user = ref.read(currentUserProvider).value;
+    if (user == null) return null;
+    if (room.guildBattleId != null) {
+      // In guild battle, "opponent" is less clear, but we'll return first player of other guild
+      final isMyGuildA = room.guildAPlayers.containsKey(user.uid);
+      final opPlayers = isMyGuildA ? room.guildBPlayers : room.guildAPlayers;
+      return opPlayers.isNotEmpty ? opPlayers.values.first as Map<String, dynamic>? : null;
+    }
+    return user.uid == room.player1['uid'] ? room.player2 : room.player1;
+  }
+
+  int _currentCorrectStreak(GameRoomModel room) {
+    final player = _getMyPlayerData(room);
+    if (player == null) return 0;
+
+    final answers = List<String>.from(player['answers'] ?? []);
     final maxIndex = answers.length < room.questions.length
         ? answers.length
         : room.questions.length;
@@ -432,11 +451,20 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   bool _opponentHasAnsweredCurrentQuestion(GameRoomModel room) {
-    final user = ref.read(currentUserProvider).value;
-    if (user == null) return false;
+    if (room.guildBattleId != null) {
+      // For guild battles, we consider "opponent" as all players in the other guild
+      final user = ref.read(currentUserProvider).value;
+      if (user == null) return false;
+      final isMyGuildA = room.guildAPlayers.containsKey(user.uid);
+      final opPlayers = isMyGuildA ? room.guildBPlayers : room.guildAPlayers;
+      
+      for (final p in opPlayers.values) {
+        if ((p['answers'] as List).length > room.currentQuestionIndex) return true;
+      }
+      return false;
+    }
 
-    final isP1 = user.uid == room.player1['uid'];
-    final opponent = isP1 ? room.player2 : room.player1;
+    final opponent = _getOpponentPlayerData(room);
     final answers = List<String>.from(opponent?['answers'] ?? []);
     return answers.length > room.currentQuestionIndex;
   }
@@ -455,15 +483,9 @@ class _GameScreenState extends ConsumerState<GameScreen>
         _syncTimer?.cancel();
         _forfeitTimer?.cancel();
         if (context.mounted) {
-          if (room.guildBattleId != null) {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => GuildResultScreen(matchId: room.guildBattleId!)),
-            );
-          } else {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => ResultScreen(room: room)),
-            );
-          }
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => ResultScreen(room: room)),
+          );
         }
         return;
       }
@@ -746,6 +768,10 @@ class _GameScreenState extends ConsumerState<GameScreen>
   }
 
   Widget _buildHeader(GameRoomModel room) {
+    if (room.guildBattleId != null) {
+      return _buildGuildHeader(room);
+    }
+    
     final user = ref.read(currentUserProvider).value;
     final isP1 = user?.uid == room.player1['uid'];
     final myData = isP1 ? room.player1 : room.player2;
@@ -779,6 +805,55 @@ class _GameScreenState extends ConsumerState<GameScreen>
           score: opData?['score'] ?? 0,
           isLeft: false,
           hasAnswered: !isP1 ? (room.player1['answers'] as List).length > room.currentQuestionIndex : (room.player2?['answers'] as List? ?? []).length > room.currentQuestionIndex,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildGuildHeader(GameRoomModel room) {
+    final user = ref.watch(currentUserProvider).value;
+    final isGuildA = room.guildAId == user?.guildId;
+    
+    final myScore = isGuildA ? room.guildAScore : room.guildBScore;
+    final opScore = isGuildA ? room.guildBScore : room.guildAScore;
+
+    final myGuildAsync = ref.watch(guildByIdProvider(isGuildA ? room.guildAId! : room.guildBId!));
+    final opGuildAsync = ref.watch(guildByIdProvider(isGuildA ? room.guildBId! : room.guildAId!));
+
+    return Row(
+      children: [
+        myGuildAsync.when(
+          data: (g) => _GuildStat(
+            name: g?.name ?? 'MY GUILD',
+            iconId: g?.iconId ?? '1',
+            score: myScore,
+            isLeft: true,
+            color: AppColors.neonPink,
+          ),
+          loading: () => const SizedBox(width: 44, height: 44, child: CircularProgressIndicator()),
+          error: (_, __) => const Icon(Icons.error),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppColors.bgDeep,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: AppColors.surface),
+          ),
+          child: Text('${room.currentQuestionIndex + 1}/10', style: AppTextStyles.label.copyWith(color: AppColors.gold)),
+        ),
+        const Spacer(),
+        opGuildAsync.when(
+          data: (g) => _GuildStat(
+            name: g?.name ?? 'OPPONENT',
+            iconId: g?.iconId ?? '1',
+            score: opScore,
+            isLeft: false,
+            color: AppColors.neonCyan,
+          ),
+          loading: () => const SizedBox(width: 44, height: 44, child: CircularProgressIndicator()),
+          error: (_, __) => const Icon(Icons.error),
         ),
       ],
     );
@@ -1066,6 +1141,71 @@ class _ABCountdownState extends State<_ABCountdown> {
   }
 }
 
+class _GuildStat extends StatelessWidget {
+  final String name;
+  final String iconId;
+  final int score;
+  final bool isLeft;
+  final Color color;
+
+  const _GuildStat({
+    required this.name,
+    required this.iconId,
+    required this.score,
+    required this.isLeft,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      textDirection: isLeft ? TextDirection.ltr : TextDirection.rtl,
+      children: [
+        Container(
+          width: 44, height: 44,
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+            border: Border.all(color: color, width: 2),
+            boxShadow: [
+              BoxShadow(color: color.withValues(alpha: 0.3), blurRadius: 8),
+            ],
+          ),
+          child: Icon(_getIconData(iconId), color: color, size: 24),
+        ),
+        const SizedBox(width: 12),
+        Column(
+          crossAxisAlignment: isLeft ? CrossAxisAlignment.start : CrossAxisAlignment.end,
+          children: [
+            Text(name.toUpperCase(), style: AppTextStyles.label.copyWith(
+              fontSize: 9,
+              letterSpacing: 1,
+              color: Colors.white,
+            )),
+            Text('$score', style: AppTextStyles.display.copyWith(
+              color: color,
+              fontSize: 22,
+              letterSpacing: 0
+            )),
+          ],
+        ),
+      ],
+    );
+  }
+
+  IconData _getIconData(String id) {
+    switch (id) {
+      case '1': return Icons.auto_awesome_rounded;
+      case '2': return Icons.military_tech_rounded;
+      case '3': return Icons.shield_rounded;
+      case '4': return Icons.bolt_rounded;
+      case '5': return Icons.workspace_premium_rounded;
+      case '6': return Icons.pets_rounded;
+      default: return Icons.groups_rounded;
+    }
+  }
+}
 class _AnswerButton extends StatelessWidget {
   final String text;
   final bool isSelected;

@@ -30,6 +30,17 @@ class RankSystem {
     }
   }
 
+  static IconData getRankIcon(String rank) {
+    switch (rank) {
+      case 'Legend': return Icons.stars_rounded;
+      case 'Champion': return Icons.workspace_premium_rounded;
+      case 'Master': return Icons.military_tech_rounded;
+      case 'Platinum': return Icons.shield_rounded;
+      case 'Diamond': return Icons.diamond_rounded;
+      default: return Icons.emoji_events_rounded;
+    }
+  }
+
   /// Returns the next rank/sub-rank configuration.
   static Map<String, dynamic> promote(String currentRank, int? currentSubRank) {
     if (currentRank == 'Legend') {

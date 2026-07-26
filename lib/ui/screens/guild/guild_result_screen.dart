@@ -1,16 +1,17 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:confetti/confetti.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:screenshot/screenshot.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/constants/colors.dart';
 import '../../../core/constants/text_styles.dart';
 import '../../../providers/user_providers.dart';
 import '../../../providers/guild_providers.dart';
 import '../../../data/models/guild_model.dart';
 import '../../../data/models/user_model.dart';
-import '../../widgets/smart_avatar.dart';
 import '../../widgets/neon_swirl_background.dart';
 import '../../widgets/guild_victory_card.dart';
 import '../../../providers/navigation_providers.dart';
@@ -209,9 +210,11 @@ class _GuildResultScreenState extends ConsumerState<GuildResultScreen> {
 
       const shareMessage = "My guild just dominated in QuestArena! 🛡️🔥\nJoin us and climb the ranks!\n\n🎮 Play now:\nhttps://quest-arena-self.vercel.app/";
 
-      await Share.shareXFiles(
-        [XFile(imagePath.path)],
-        text: shareMessage,
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(imagePath.path)],
+          text: shareMessage,
+        ),
       );
     } catch (e) {
       if (mounted) {

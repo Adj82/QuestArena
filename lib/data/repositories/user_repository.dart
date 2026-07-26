@@ -229,6 +229,20 @@ class UserRepository {
           'totalPerfectScores': user.totalPerfectScores + (playerScore >= 50 ? 1 : 0),
         });
 
+        // 6.5 Update Guild Stats if user is a member
+        if (user.guildId != null) {
+          final guildRef = _db.collection('guilds').doc(user.guildId);
+          // Guild earns roughly 20% of user XP for every match played
+          final int guildXpGained = (xpEarned * 0.2).round().clamp(5, 50);
+          
+          transaction.update(guildRef, {
+            'xp': FieldValue.increment(guildXpGained),
+            'weeklyXp': FieldValue.increment(guildXpGained),
+            'totalWins': FieldValue.increment(isWin ? 1 : 0),
+            'weeklyWins': FieldValue.increment(isWin ? 1 : 0),
+          });
+        }
+
         // 7. Match History Record
         final matchRef = userRef.collection('matchHistory').doc();
         transaction.set(matchRef, {
