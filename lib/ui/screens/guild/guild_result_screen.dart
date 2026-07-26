@@ -10,7 +10,6 @@ import '../../../providers/user_providers.dart';
 import '../../../providers/guild_providers.dart';
 import '../../../data/models/guild_model.dart';
 import '../../../data/models/user_model.dart';
-import '../../widgets/smart_avatar.dart';
 import '../../widgets/neon_swirl_background.dart';
 import '../../widgets/guild_victory_card.dart';
 import '../../../providers/navigation_providers.dart';
@@ -203,14 +202,10 @@ class _GuildResultScreenState extends ConsumerState<GuildResultScreen> {
         context: context,
       );
 
-      final directory = await getTemporaryDirectory();
-      final imagePath = await File('${directory.path}/guild_victory.png').create();
-      await imagePath.writeAsBytes(image);
-
       const shareMessage = "My guild just dominated in QuestArena! 🛡️🔥\nJoin us and climb the ranks!\n\n🎮 Play now:\nhttps://quest-arena-self.vercel.app/";
 
       await Share.shareXFiles(
-        [XFile(imagePath.path)],
+        [XFile.fromData(image, name: 'guild_victory.png', mimeType: 'image/png')],
         text: shareMessage,
       );
     } catch (e) {
