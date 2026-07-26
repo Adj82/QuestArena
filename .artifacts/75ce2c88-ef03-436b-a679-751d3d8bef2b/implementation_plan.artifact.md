@@ -1,31 +1,26 @@
-# Implementation Plan - Deploy to Vercel
+# Fix Vercel Deployment Output Directory Error
 
-This plan outlines the steps to build the Flutter web application and deploy it to Vercel.
-
-## User Review Required
-
-> [!IMPORTANT]
-> **Vercel Authentication**: Deploying to Vercel requires a Vercel account and authentication. If you haven't logged in via the CLI before, the deployment command may pause and require you to authenticate in your browser.
->
-> **Web Build**: I will be running `flutter build web --release`. This might take a few minutes depending on the project size.
+The Vercel deployment is failing because it expects an output directory named `public`, but the current build script either outputs to the root or `build/web`. Since Vercel's project settings are looking for `public`, I will adjust the build process to provide that directory.
 
 ## Proposed Changes
 
-### [Build & Deployment]
+### [Build Configuration]
 
-#### [ACTION] Build Web Application
-- Run `flutter build web --release` to generate the static files in `build/web`.
+#### [MODIFY] [package.json](file:///C:/QuestArena/package.json)
+- Update the `build` script to:
+    1. Check if Flutter is already cloned (to save time on re-builds if supported).
+    2. Build the Flutter web application.
+    3. Create a `public` directory.
+    4. Copy the build output from `build/web` into the `public` directory.
 
-#### [ACTION] Vercel Configuration
-- I will ensure the `vercel.json` is correctly configured to serve the `build/web` directory as a Single Page Application (SPA).
-- I will update the `vercel.json` to point the `public` directory (or equivalent) to `build/web` if needed, although usually, it's easier to run `vercel` from within that directory or specify it in the command.
-
-#### [ACTION] Deployment
-- Run `npx vercel --prod` to deploy the production build.
-- I will use the `--yes` flag to skip interactive prompts if possible, but the first-time setup might still require your input.
+#### [MODIFY] [vercel.json](file:///C:/QuestArena/vercel.json)
+- Ensure routing and SPA settings are correct. The current settings look fine for a Flutter SPA.
 
 ## Verification Plan
 
+### Automated Tests
+- I will run a local build and check if the `public` directory is correctly populated.
+
 ### Manual Verification
-- Once the deployment is complete, Vercel will provide a URL (e.g., `questarena.vercel.app`).
-- I will provide this link for you to verify the live application.
+- The user will need to push the changes to GitHub to trigger the Vercel deployment again.
+- Monitor the Vercel logs to ensure the `public` directory is found and the deployment succeeds.
